@@ -1,0 +1,117 @@
+import axios from "axios";
+import * as cheerio from "cheerio";
+
+interface ScrapedMetadata {
+  title?: string;
+  description?: string;
+  imageUrl?: string;
+  siteName?: string;
+  category: "Video" | "Article" | "Product" | "Social" | "Other";
+}
+
+export const scrapeMetadata = async (url: string): Promise<ScrapedMetadata> => {
+  try {
+    const { data } = await axios.get(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+      },
+    });
+
+    const $ = cheerio.load(data);
+
+    // Helper to resolve relative URLs
+    const resolveUrl = (relativeUrl?: string) => {
+      if (!relativeUrl) return undefined;
+      try {
+        return new URL(relativeUrl, url).href;
+      } catch (e) {
+        return relativeUrl;
+      }
+    };
+
+    // Extract Title (OG > Twitter > Title Tag)
+    const title =
+      $('meta[property="og:title"]').attr("content") ||
+      $('meta[name="twitter:title"]').attr("content") ||
+      $("title").text();
+
+    // Extract Description (OG > Twitter > Meta Description)
+    const description =
+      $('meta[property="og:description"]').attr("content") ||
+      $('meta[name="twitter:description"]').attr("content") ||
+      $('meta[name="description"]').attr("content");
+
+    // Extract Image (OG > Twitter > Link Image > Favicon)
+    let imageUrl =
+      $('meta[property="og:image"]').attr("content") ||
+      $('meta[name="twitter:image"]').attr("content") ||
+      $('link[rel="image_src"]').attr("href");
+
+    // Fallback to Favicon if no image found
+    if (!imageUrl) {
+      const favicon =
+        $('link[rel="apple-touch-icon"]').attr("href") ||
+        $('link[rel="icon"]').attr("href") ||
+        $('link[rel="shortcut icon"]').attr("href");
+
+      if (favicon) {
+        imageUrl = favicon;
+      }
+    }
+
+    // Resolve relative URL for image
+    imageUrl = resolveUrl(imageUrl);
+
+    const siteName = $('meta[property="og:site_name"]').attr("content");
+
+    // Auto-Categorization Logic
+    let category: ScrapedMetadata["category"] = "Other";
+    const domain = new URL(url).hostname.toLowerCase();
+
+    if (
+      domain.includes("youtube") ||
+      domain.includes("vimeo") ||
+      domain.includes("tiktok")
+    ) {
+      category = "Video";
+    } else if (
+      domain.includes("medium") ||
+      domain.includes("dev.to") ||
+      domain.includes("blog")
+    ) {
+      category = "Article";
+    } else if (
+      domain.includes("amazon") ||
+      domain.includes("trendyol") ||
+      domain.includes("hepsiburada")
+    ) {
+      category = "Product";
+    } else if (
+      domain.includes("twitter") ||
+      domain.includes("x.com") ||
+      domain.includes("instagram") ||
+      domain.includes("linkedin")
+    ) {
+      category = "Social";
+    }
+
+    console.log(
+      `[Scraper] URL: ${url} | Domain: ${domain} | Category: ${category}`,
+    );
+
+    return {
+      title: title?.trim(),
+      description: description?.trim(),
+      imageUrl,
+      siteName,
+      category,
+    };
+  } catch (error) {
+    console.error(`Error scraping ${url}:`, error);
+    // Fallback if scraping fails
+    return {
+      category: "Other",
+    };
+  }
+};
