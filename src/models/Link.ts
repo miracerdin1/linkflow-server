@@ -10,6 +10,7 @@ export interface ILink extends Document {
   tags: string[];
   folderId?: mongoose.Types.ObjectId;
   isPublic: boolean;
+  owner?: mongoose.Types.ObjectId;
   createdAt: Date;
 }
 
@@ -27,6 +28,7 @@ const LinkSchema: Schema = new Schema({
   tags: [{ type: String }],
   folderId: { type: Schema.Types.ObjectId, ref: "Folder", default: null },
   isPublic: { type: Boolean, default: false },
+  owner: { type: Schema.Types.ObjectId, ref: "User", default: null },
   createdAt: { type: Date, default: Date.now },
 });
 
