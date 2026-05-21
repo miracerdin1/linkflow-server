@@ -5,6 +5,8 @@ export interface IFolder extends Document {
   icon?: string;
   color?: string;
   isPublic: boolean;
+  owner?: mongoose.Types.ObjectId;
+  collaborators: mongoose.Types.ObjectId[];
   createdAt: Date;
 }
 
@@ -13,6 +15,8 @@ const FolderSchema: Schema = new Schema({
   icon: { type: String, default: "folder" },
   color: { type: String, default: "#6200ee" },
   isPublic: { type: Boolean, default: false },
+  owner: { type: Schema.Types.ObjectId, ref: "User", default: null },
+  collaborators: [{ type: Schema.Types.ObjectId, ref: "User", default: [] }],
   createdAt: { type: Date, default: Date.now },
 });
 

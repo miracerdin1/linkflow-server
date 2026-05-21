@@ -1,71 +1,113 @@
-import express from "express";
+import express, { Response } from "express";
+import User from "../models/User";
 import Folder from "../models/Folder";
 import Link from "../models/Link";
 import Profile from "../models/Profile";
+import { authenticateToken, AuthRequest } from "../middleware/auth";
 
 const router = express.Router();
 
-// GET /api/profile - Fetch the bio profile settings
-router.get("/api/profile", async (req, res) => {
+// GET /api/profile - Fetch the bio profile settings for the authenticated user
+router.get("/api/profile", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
-    let profile = await Profile.findOne();
+    const userId = req.user?.id;
+    let profile = await Profile.findOne({ owner: userId });
+    
     if (!profile) {
       profile = new Profile({
-        name: "Miraç Erdin",
+        name: req.user?.username || "LinkFlow Kullanıcısı",
         bio: "Kaydettiğim harika bağlantılar ve koleksiyonlar.",
         avatarUrl: "",
         theme: "purple-dark",
+        owner: userId,
       });
       await profile.save();
     }
+    
     res.json(profile);
   } catch (error) {
     res.status(500).json({ error: "Profil bilgileri yüklenemedi" });
   }
 });
 
-// POST /api/profile - Create or update bio profile settings
-router.post("/api/profile", async (req, res) => {
+// POST /api/profile - Create or update bio profile settings for the authenticated user
+router.post("/api/profile", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
+    const userId = req.user?.id;
     const { name, bio, avatarUrl, theme } = req.body;
+    
     const profile = await Profile.findOneAndUpdate(
-      {},
+      { owner: userId },
       { name, bio, avatarUrl, theme, updatedAt: new Date() },
       { upsert: true, new: true }
     );
+    
     res.json(profile);
   } catch (error) {
     res.status(500).json({ error: "Profil güncellenemedi" });
   }
 });
 
-// GET /bio - Server-Side Rendered (SSR) public bio page
-router.get("/bio", async (req, res) => {
+// GET /bio/:username - Server-Side Rendered (SSR) public bio page for a specific user
+router.get("/bio/:username", async (req: express.Request, res: Response): Promise<any> => {
   try {
-    // 1. Fetch Profile Settings
-    let profile = await Profile.findOne();
+    const username = String(req.params.username).trim().toLowerCase();
+
+    // 1. Find User
+    const user = await User.findOne({ username });
+    if (!user) {
+      return res.status(404).send(`
+        <!DOCTYPE html>
+        <html lang="tr">
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Kullanıcı Bulunamadı - LinkFlow</title>
+          <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+          <style>
+            body { font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #1a1a2e; color: #fff; text-align: center; }
+            .card { background: rgba(255,255,255,0.05); padding: 40px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.1); max-width: 400px; }
+            h1 { color: #ff5e62; font-size: 28px; margin-bottom: 12px; }
+            p { font-size: 16px; opacity: 0.8; margin-bottom: 24px; }
+            .btn { background: #6200ee; color: #fff; padding: 12px 24px; border-radius: 12px; text-decoration: none; font-weight: bold; }
+          </style>
+        </head>
+        <body>
+          <div class="card">
+            <h1>Kullanıcı Bulunamadı</h1>
+            <p>Aradığınız "${username}" adlı kullanıcı LinkFlow sisteminde kayıtlı değil.</p>
+            <a href="https://github.com/miracerdin1/mobile" class="btn">LinkFlow'u Keşfet</a>
+          </div>
+        </body>
+        </html>
+      `);
+    }
+
+    // 2. Fetch Profile Settings
+    let profile = await Profile.findOne({ owner: user._id });
     if (!profile) {
       profile = new Profile({
-        name: "Miraç Erdin",
+        name: user.username,
         bio: "Kaydettiğim harika bağlantılar ve koleksiyonlar.",
         avatarUrl: "",
         theme: "purple-dark",
       });
     }
 
-    // 2. Fetch Public Folders
-    const publicFolders = await Folder.find({ isPublic: true }).sort({ name: 1 });
+    // 3. Fetch Public Folders belonging to this user
+    const publicFolders = await Folder.find({ owner: user._id, isPublic: true }).sort({ name: 1 });
     const publicFolderIds = publicFolders.map((f) => f._id);
 
-    // 3. Fetch Public Links (either explicitly marked public, or inside public folders)
+    // 4. Fetch Public Links (either explicitly marked public, or inside public folders owned by this user)
     const publicLinks = await Link.find({
+      owner: user._id,
       $or: [
         { isPublic: true },
         { folderId: { $in: publicFolderIds } }
       ]
     }).sort({ createdAt: -1 });
 
-    // 4. Group links by Folder
+    // 5. Group links by Folder
     const groupedLinks: { [key: string]: any[] } = {};
     const uncategorizedLinks: any[] = [];
 
@@ -82,7 +124,7 @@ router.get("/bio", async (req, res) => {
       }
     });
 
-    // 5. Select Theme styles
+    // 6. Select Theme styles
     let themeStyles = "";
     let backgroundGradient = "";
 
@@ -214,7 +256,7 @@ router.get("/bio", async (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${profile.name} - Bio LinkFlow</title>
+  <title>${profile.name} (@${user.username}) - Bio LinkFlow</title>
   <meta name="description" content="${profile.bio}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -281,6 +323,18 @@ router.get("/bio", async (req, res) => {
       font-weight: 800;
       letter-spacing: -0.5px;
       margin-bottom: 6px;
+    }
+    .profile-username {
+      font-size: 13px;
+      font-weight: bold;
+      opacity: 0.7;
+      margin-top: -4px;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+      background: rgba(255,255,255,0.1);
+      padding: 2px 10px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.1);
     }
     .profile-bio {
       font-size: 15px;
@@ -394,6 +448,7 @@ router.get("/bio", async (req, res) => {
     <div class="profile-header">
       ${avatarImg}
       <h1 class="profile-name">${profile.name}</h1>
+      <div class="profile-username">@${user.username}</div>
       <p class="profile-bio">${profile.bio}</p>
     </div>
     
@@ -413,6 +468,33 @@ router.get("/bio", async (req, res) => {
     console.error("Bio page render error:", error);
     res.status(500).send("Bio sayfası yüklenirken bir hata oluştu.");
   }
+});
+
+// GET /bio - Redirect legacy route to a friendly welcome / placeholder
+router.get("/bio", (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="tr">
+    <head>
+      <meta charset="UTF-8">
+      <title>LinkFlow Bio</title>
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+      <style>
+        body { font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #1a1a2e; color: #fff; text-align: center; }
+        .card { background: rgba(255,255,255,0.05); padding: 40px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.1); max-width: 400px; }
+        h1 { color: #6200ee; font-size: 28px; margin-bottom: 12px; }
+        p { font-size: 16px; opacity: 0.8; margin-bottom: 24px; }
+        .btn { background: #03dac6; color: #000; padding: 12px 24px; border-radius: 12px; text-decoration: none; font-weight: bold; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h1>LinkFlow Bio Alanı</h1>
+        <p>Lütfen kendi kullanıcı adınız ile bio sayfanızı açın. Örn: /bio/kullanici_adiniz</p>
+      </div>
+    </body>
+    </html>
+  `);
 });
 
 export default router;
