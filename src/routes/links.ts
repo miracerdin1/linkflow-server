@@ -7,7 +7,16 @@ const router = express.Router();
 // GET /api/links - Get all links
 router.get("/", async (req, res) => {
   try {
-    const links = await Link.find().sort({ createdAt: -1 });
+    const { folderId } = req.query;
+    const query: any = {};
+    if (folderId) {
+      if (folderId === "null" || folderId === "none") {
+        query.folderId = null;
+      } else {
+        query.folderId = folderId;
+      }
+    }
+    const links = await Link.find(query).sort({ createdAt: -1 });
     res.json(links);
   } catch (error) {
     res.status(500).json({ error: "Failed to fetch links" });
@@ -17,7 +26,7 @@ router.get("/", async (req, res) => {
 // POST /api/links - Add a new link
 router.post("/", async (req, res) => {
   try {
-    const { url } = req.body;
+    const { url, folderId } = req.body;
 
     if (!url) {
       return res.status(400).json({ error: "URL is required" });
@@ -30,6 +39,7 @@ router.post("/", async (req, res) => {
     const newLink = new Link({
       url,
       ...metadata,
+      folderId: folderId || null,
     });
 
     await newLink.save();
@@ -45,11 +55,11 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, url } = req.body;
+    const { title, description, url, folderId } = req.body;
 
     const updatedLink = await Link.findByIdAndUpdate(
       id,
-      { title, description, url },
+      { title, description, url, folderId: folderId !== undefined ? (folderId === "null" || folderId === "" ? null : folderId) : undefined },
       { new: true }
     );
 

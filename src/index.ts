@@ -3,6 +3,7 @@ import dotenv from "dotenv";
 import express from "express";
 import mongoose from "mongoose";
 import linkRoutes from "./routes/links";
+import folderRoutes from "./routes/folders";
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ app.get("/", (req, res) => {
 
 // Routes
 app.use("/api/links", linkRoutes);
+app.use("/api/folders", folderRoutes);
 
 // MongoDB Connection (Placeholder - Will be updated with real connection string)
 const connectDB = async () => {
