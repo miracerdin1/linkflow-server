@@ -26,7 +26,7 @@ router.get("/", async (req, res) => {
 // POST /api/links - Add a new link
 router.post("/", async (req, res) => {
   try {
-    const { url, folderId } = req.body;
+    const { url, folderId, isPublic } = req.body;
 
     if (!url) {
       return res.status(400).json({ error: "URL is required" });
@@ -40,6 +40,7 @@ router.post("/", async (req, res) => {
       url,
       ...metadata,
       folderId: folderId || null,
+      isPublic: isPublic || false,
     });
 
     await newLink.save();
@@ -55,11 +56,17 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, url, folderId } = req.body;
+    const { title, description, url, folderId, isPublic } = req.body;
 
     const updatedLink = await Link.findByIdAndUpdate(
       id,
-      { title, description, url, folderId: folderId !== undefined ? (folderId === "null" || folderId === "" ? null : folderId) : undefined },
+      { 
+        title, 
+        description, 
+        url, 
+        folderId: folderId !== undefined ? (folderId === "null" || folderId === "" ? null : folderId) : undefined,
+        isPublic
+      },
       { new: true }
     );
 

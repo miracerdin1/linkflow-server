@@ -9,6 +9,7 @@ export interface ILink extends Document {
   category: "Video" | "Article" | "Product" | "Social" | "Other";
   tags: string[];
   folderId?: mongoose.Types.ObjectId;
+  isPublic: boolean;
   createdAt: Date;
 }
 
@@ -25,6 +26,7 @@ const LinkSchema: Schema = new Schema({
   },
   tags: [{ type: String }],
   folderId: { type: Schema.Types.ObjectId, ref: "Folder", default: null },
+  isPublic: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
 });
 

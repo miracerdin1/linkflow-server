@@ -17,7 +17,7 @@ router.get("/", async (req, res) => {
 // POST /api/folders - Create a new folder
 router.post("/", async (req, res) => {
   try {
-    const { name, icon, color } = req.body;
+    const { name, icon, color, isPublic } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: "Folder name is required" });
@@ -27,6 +27,7 @@ router.post("/", async (req, res) => {
       name,
       icon,
       color,
+      isPublic: isPublic || false,
     });
 
     await newFolder.save();
@@ -40,11 +41,11 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, icon, color } = req.body;
+    const { name, icon, color, isPublic } = req.body;
 
     const updatedFolder = await Folder.findByIdAndUpdate(
       id,
-      { name, icon, color },
+      { name, icon, color, isPublic },
       { new: true }
     );
 
