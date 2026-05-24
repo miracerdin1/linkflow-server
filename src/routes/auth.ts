@@ -10,9 +10,9 @@ const router = express.Router();
 const PASSWORD_MIN_LENGTH = 8;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const createToken = (user: { _id: unknown; username: string; email: string }) =>
+const createToken = (user: { _id: unknown; username: string; email: string; role: string }) =>
   jwt.sign(
-    { id: user._id, username: user.username, email: user.email },
+    { id: user._id, username: user.username, email: user.email, role: user.role },
     getJwtSecret(),
     { expiresIn: "30d", algorithm: "HS256" },
   );
@@ -56,10 +56,15 @@ router.post("/register", async (req: any, res: Response): Promise<any> => {
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(cleanPassword, salt);
+    
+    // Automatically assign admin role if email matches ADMIN_EMAIL from env
+    const isAdmin = process.env.ADMIN_EMAIL && cleanEmail === process.env.ADMIN_EMAIL.toLowerCase();
+    
     const newUser = new User({
       username: cleanUsername,
       email: cleanEmail,
       passwordHash,
+      role: isAdmin ? "admin" : "user",
     });
 
     await newUser.save();
@@ -84,6 +89,7 @@ router.post("/register", async (req: any, res: Response): Promise<any> => {
         username: newUser.username,
         email: newUser.email,
         plan: newUser.plan || "free",
+        role: newUser.role || "user",
       },
     });
   } catch (error) {
@@ -133,6 +139,7 @@ router.post("/login", async (req: any, res: Response): Promise<any> => {
         username: user.username,
         email: user.email,
         plan: user.plan || "free",
+        role: user.role || "user",
       },
     });
   } catch (error) {

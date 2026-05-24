@@ -11,7 +11,7 @@ export const checkLinkQuota = async (req: AuthRequest, res: Response, next: Next
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı" });
-    if (user.plan === "pro") return next();
+    if (user.role === "admin" || user.plan === "pro") return next();
 
     const linkCount = await Link.countDocuments({ owner: userId });
     if (linkCount >= 30) {
@@ -35,7 +35,7 @@ export const checkFolderQuota = async (req: AuthRequest, res: Response, next: Ne
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı" });
-    if (user.plan === "pro") return next();
+    if (user.role === "admin" || user.plan === "pro") return next();
 
     const folderCount = await Folder.countDocuments({ owner: userId });
     if (folderCount >= 3) {
@@ -59,7 +59,7 @@ export const checkCollaboratorQuota = async (req: AuthRequest, res: Response, ne
 
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı" });
-    if (user.plan === "pro") return next();
+    if (user.role === "admin" || user.plan === "pro") return next();
 
     return res.status(402).json({
       error: "Pro Plana Özel Özellik",
