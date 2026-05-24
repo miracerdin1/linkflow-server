@@ -1,3 +1,4 @@
+import escapeHtml from "escape-html";
 import express, { Response } from "express";
 import User from "../models/User";
 import Folder from "../models/Folder";
@@ -75,7 +76,7 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
         <body>
           <div class="card">
             <h1>Kullanıcı Bulunamadı</h1>
-            <p>Aradığınız "${username}" adlı kullanıcı LinkFlow sisteminde kayıtlı değil.</p>
+            <p>Aradığınız "${escapeHtml(username)}" adlı kullanıcı LinkFlow sisteminde kayıtlı değil.</p>
             <a href="https://github.com/miracerdin1/mobile" class="btn">LinkFlow'u Keşfet</a>
           </div>
         </body>
@@ -174,8 +175,8 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
 
     // Default Avatar SVG if none provided
     const avatarImg = profile.avatarUrl 
-      ? `<img src="${profile.avatarUrl}" class="profile-avatar" alt="${profile.name}">`
-      : `<div class="profile-avatar-fallback">${profile.name.charAt(0).toUpperCase()}</div>`;
+      ? `<img src="${escapeHtml(profile.avatarUrl)}" class="profile-avatar" alt="${escapeHtml(profile.name)}">`
+      : `<div class="profile-avatar-fallback">${escapeHtml(profile.name.charAt(0).toUpperCase())}</div>`;
 
     // Render public links HTML
     let linksHtml = "";
@@ -186,20 +187,20 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
       if (folderLinks.length > 0) {
         linksHtml += `
           <div class="folder-section">
-            <div class="folder-header" style="border-left: 5px solid ${folder.color || '#6200ee'}">
-              <span>${folder.name}</span>
+            <div class="folder-header" style="border-left: 5px solid ${escapeHtml(folder.color || '#6200ee')}">
+              <span>${escapeHtml(folder.name)}</span>
             </div>
             <div class="links-grid">
         `;
 
         folderLinks.forEach((link) => {
           linksHtml += `
-            <a href="${link.url}" target="_blank" class="link-card">
-              ${link.imageUrl ? `<img src="${link.imageUrl}" class="link-image" alt="${link.title}">` : ""}
+            <a href="${escapeHtml(link.url)}" target="_blank" class="link-card">
+              ${link.imageUrl ? `<img src="${escapeHtml(link.imageUrl)}" class="link-image" alt="${escapeHtml(link.title || '')}">` : ""}
               <div class="link-info">
-                <div class="link-title">${link.title || link.url}</div>
-                ${link.description ? `<div class="link-desc">${link.description}</div>` : ""}
-                <span class="link-domain">${link.siteName || new URL(link.url).hostname}</span>
+                <div class="link-title">${escapeHtml(link.title || link.url)}</div>
+                ${link.description ? `<div class="link-desc">${escapeHtml(link.description)}</div>` : ""}
+                <span class="link-domain">${escapeHtml(link.siteName || new URL(link.url).hostname)}</span>
               </div>
             </a>
           `;
@@ -224,12 +225,12 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
 
       uncategorizedLinks.forEach((link) => {
         linksHtml += `
-          <a href="${link.url}" target="_blank" class="link-card">
-            ${link.imageUrl ? `<img src="${link.imageUrl}" class="link-image" alt="${link.title}">` : ""}
+          <a href="${escapeHtml(link.url)}" target="_blank" class="link-card">
+            ${link.imageUrl ? `<img src="${escapeHtml(link.imageUrl)}" class="link-image" alt="${escapeHtml(link.title || '')}">` : ""}
             <div class="link-info">
-              <div class="link-title">${link.title || link.url}</div>
-              ${link.description ? `<div class="link-desc">${link.description}</div>` : ""}
-              <span class="link-domain">${link.siteName || new URL(link.url).hostname}</span>
+              <div class="link-title">${escapeHtml(link.title || link.url)}</div>
+              ${link.description ? `<div class="link-desc">${escapeHtml(link.description)}</div>` : ""}
+              <span class="link-domain">${escapeHtml(link.siteName || new URL(link.url).hostname)}</span>
             </div>
           </a>
         `;
@@ -256,8 +257,8 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${profile.name} (@${user.username}) - Bio LinkFlow</title>
-  <meta name="description" content="${profile.bio}">
+  <title>${escapeHtml(profile.name)} (@${escapeHtml(user.username)}) - Bio LinkFlow</title>
+  <meta name="description" content="${escapeHtml(profile.bio)}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
@@ -447,9 +448,9 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
   <div class="profile-container">
     <div class="profile-header">
       ${avatarImg}
-      <h1 class="profile-name">${profile.name}</h1>
-      <div class="profile-username">@${user.username}</div>
-      <p class="profile-bio">${profile.bio}</p>
+      <h1 class="profile-name">${escapeHtml(profile.name)}</h1>
+      <div class="profile-username">@${escapeHtml(user.username)}</div>
+      <p class="profile-bio">${escapeHtml(profile.bio)}</p>
     </div>
     
     ${linksHtml}

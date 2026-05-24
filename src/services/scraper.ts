@@ -1,5 +1,9 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
+import dns from "dns";
+import { promisify } from "util";
+
+const lookupAsync = promisify(dns.lookup);
 
 interface ScrapedMetadata {
   title?: string;
@@ -9,13 +13,43 @@ interface ScrapedMetadata {
   category: "Video" | "Article" | "Product" | "Social" | "Other";
 }
 
+// Check if an IP address is private/internal
+const isPrivateIP = (ip: string) => {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4) return false;
+  return (
+    parts[0] === 10 ||
+    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
+    (parts[0] === 192 && parts[1] === 168) ||
+    parts[0] === 127 ||
+    ip === "169.254.169.254" || // AWS / Cloud metadata
+    ip === "0.0.0.0"
+  );
+};
+
 export const scrapeMetadata = async (url: string): Promise<ScrapedMetadata> => {
   try {
+    const parsedUrl = new URL(url);
+    const hostname = parsedUrl.hostname;
+
+    // Prevent direct localhost/internal access via DNS lookup
+    try {
+      const { address } = await lookupAsync(hostname);
+      if (isPrivateIP(address)) {
+        throw new Error("SSRF Attempt blocked: Cannot access internal networks.");
+      }
+    } catch (dnsError) {
+       console.warn(`DNS lookup failed or SSRF blocked for ${hostname}:`, dnsError);
+       throw dnsError; // Re-throw to bypass axios fetch
+    }
+
     const { data } = await axios.get(url, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
       },
+      timeout: 5000, // Added timeout for safety
+      maxRedirects: 3,
     });
 
     const $ = cheerio.load(data);
@@ -67,7 +101,7 @@ export const scrapeMetadata = async (url: string): Promise<ScrapedMetadata> => {
 
     // Auto-Categorization Logic
     let category: ScrapedMetadata["category"] = "Other";
-    const domain = new URL(url).hostname.toLowerCase();
+    const domain = parsedUrl.hostname.toLowerCase();
 
     if (
       domain.includes("youtube") ||
