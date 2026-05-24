@@ -122,6 +122,12 @@ router.post("/login", async (req: any, res: Response): Promise<any> => {
       return res.status(400).json({ error: "Kullanici adi, e-posta veya sifre hatali" });
     }
 
+    // Automatically assign admin role if email matches ADMIN_EMAIL from env
+    if (process.env.ADMIN_EMAIL && user.email === process.env.ADMIN_EMAIL.toLowerCase() && user.role !== "admin") {
+      user.role = "admin";
+      await user.save();
+    }
+
     let profile = await Profile.findOne({ owner: user._id });
     if (!profile) {
       profile = new Profile({
