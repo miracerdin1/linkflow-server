@@ -179,14 +179,15 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
 
         if (newFolderId) {
           const newFolder = await Folder.findById(newFolderId);
-        if (!newFolder) {
-          return res.status(404).json({ error: "Hedef klasör bulunamadı" });
-        }
-        const hasNewFolderAccess =
-          (newFolder.owner && newFolder.owner.toString() === userId) ||
-          newFolder.collaborators.some((cId) => cId.toString() === userId);
-        if (!hasNewFolderAccess) {
-          return res.status(403).json({ error: "Hedef klasöre taşımak için yetkiniz yok" });
+          if (!newFolder) {
+            return res.status(404).json({ error: "Hedef klasör bulunamadı" });
+          }
+          const hasNewFolderAccess =
+            (newFolder.owner && newFolder.owner.toString() === userId) ||
+            newFolder.collaborators.some((cId) => cId.toString() === userId);
+          if (!hasNewFolderAccess) {
+            return res.status(403).json({ error: "Hedef klasöre taşımak için yetkiniz yok" });
+          }
         }
       }
     }
