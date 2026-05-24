@@ -150,7 +150,8 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
 
     const isLinkOwner = link.owner && link.owner.toString() === userId;
 
-    // Fix IDOR: If there is no folder, ONLY the owner can edit it.
+    // Fix IDOR: Only link owner or collaborators can edit title/url.
+    // If moving folders, only the link owner can do that (checked below).
     if (!link.folderId) {
       if (!isLinkOwner) {
         return res.status(403).json({ error: "Bu bağlantıyı düzenlemek için yetkiniz yok" });
@@ -167,16 +168,26 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
 
     if (folderId !== undefined) {
       newFolderId = (folderId === "null" || folderId === "") ? null : folderId;
-      if (newFolderId && newFolderId.toString() !== (oldFolderId ? oldFolderId.toString() : "")) {
-        const newFolder = await Folder.findById(newFolderId);
-        if (!newFolder) {
-          return res.status(404).json({ error: "Hedef klasör bulunamadı" });
+      const oldStr = oldFolderId ? oldFolderId.toString() : "";
+      const newStr = newFolderId ? newFolderId.toString() : "";
+      
+      if (newStr !== oldStr) {
+        // Only the link owner can change the folder
+        if (!isLinkOwner) {
+          return res.status(403).json({ error: "Sadece link sahibi linkin klasörünü değiştirebilir" });
         }
-        const hasNewFolderAccess =
-          (newFolder.owner && newFolder.owner.toString() === userId) ||
-          newFolder.collaborators.some((cId) => cId.toString() === userId);
-        if (!hasNewFolderAccess) {
-          return res.status(403).json({ error: "Hedef klasöre taşımak için yetkiniz yok" });
+
+        if (newFolderId) {
+          const newFolder = await Folder.findById(newFolderId);
+          if (!newFolder) {
+            return res.status(404).json({ error: "Hedef klasör bulunamadı" });
+          }
+          const hasNewFolderAccess =
+            (newFolder.owner && newFolder.owner.toString() === userId) ||
+            newFolder.collaborators.some((cId) => cId.toString() === userId);
+          if (!hasNewFolderAccess) {
+            return res.status(403).json({ error: "Hedef klasöre taşımak için yetkiniz yok" });
+          }
         }
       }
     }
@@ -230,27 +241,19 @@ router.delete("/:id", authenticateToken, async (req: AuthRequest, res: Response)
     }
 
     // Check write authorization
-    let folderAccess = false; // DEFAULT TO FALSE
+    let isFolderOwner = false;
     if (link.folderId) {
       const folder = await Folder.findById(link.folderId);
       if (folder) {
-        folderAccess =
-          (folder.owner && folder.owner.toString() === userId) ||
-          folder.collaborators.some((cId) => cId.toString() === userId);
+        isFolderOwner = !!(folder.owner && folder.owner.toString() === userId);
       }
     }
 
-    const isLinkOwner = link.owner && link.owner.toString() === userId;
+    const isLinkOwner = !!(link.owner && link.owner.toString() === userId);
 
-    // Fix IDOR: If there is no folder, ONLY the owner can delete it.
-    if (!link.folderId) {
-      if (!isLinkOwner) {
-        return res.status(403).json({ error: "Bu bağlantıyı silmek için yetkiniz yok" });
-      }
-    } else {
-      if (!isLinkOwner && !folderAccess) {
-         return res.status(403).json({ error: "Bu bağlantıyı silmek için yetkiniz yok" });
-      }
+    // Fix IDOR: Only the link owner OR the folder owner can delete the link.
+    if (!isLinkOwner && !isFolderOwner) {
+      return res.status(403).json({ error: "Bu bağlantıyı silmek için yetkiniz yok" });
     }
 
     await Link.findByIdAndDelete(id);
