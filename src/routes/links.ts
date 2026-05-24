@@ -3,6 +3,7 @@ import Link from "../models/Link";
 import Folder from "../models/Folder";
 import { scrapeMetadata } from "../services/scraper";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
+import { checkLinkQuota } from "../middleware/quota";
 import { getSafeExternalUrl } from "../utils/url";
 
 const router = express.Router();
@@ -75,7 +76,7 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Prom
 });
 
 // POST /api/links - Add a new link
-router.post("/", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
+router.post("/", authenticateToken, checkLinkQuota, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
     const { url, folderId, isPublic } = req.body;
     const userId = req.user?.id;

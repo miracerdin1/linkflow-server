@@ -83,6 +83,7 @@ router.post("/register", async (req: any, res: Response): Promise<any> => {
         id: newUser._id,
         username: newUser.username,
         email: newUser.email,
+        plan: newUser.plan || "free",
       },
     });
   } catch (error) {
@@ -131,6 +132,7 @@ router.post("/login", async (req: any, res: Response): Promise<any> => {
         id: user._id,
         username: user.username,
         email: user.email,
+        plan: user.plan || "free",
       },
     });
   } catch (error) {
