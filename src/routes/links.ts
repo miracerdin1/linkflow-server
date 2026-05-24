@@ -191,6 +191,7 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
         }
       }
     }
+    }
 
     // Update fields
     link.title = title !== undefined ? title : link.title;
