@@ -5,8 +5,20 @@ import Folder from "../models/Folder";
 import Link from "../models/Link";
 import Profile from "../models/Profile";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
+import { isSafeExternalUrl } from "../utils/url";
+import { isHexColor } from "../utils/validation";
 
 const router = express.Router();
+const ALLOWED_PROFILE_THEMES = new Set(["purple-dark", "sunset", "nordic-light", "glassmorphic"]);
+const renderExternalUrl = (url: string) => isSafeExternalUrl(url) ? escapeHtml(url) : "#";
+const renderColor = (color?: string) => isHexColor(color) ? escapeHtml(color || "#6200ee") : "#6200ee";
+const renderHostname = (url: string) => {
+  try {
+    return new URL(url).hostname;
+  } catch (error) {
+    return "";
+  }
+};
 
 // GET /api/profile - Fetch the bio profile settings for the authenticated user
 router.get("/api/profile", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
@@ -36,6 +48,14 @@ router.post("/api/profile", authenticateToken, async (req: AuthRequest, res: Res
   try {
     const userId = req.user?.id;
     const { name, bio, avatarUrl, theme } = req.body;
+
+    if (avatarUrl && !isSafeExternalUrl(avatarUrl)) {
+      return res.status(400).json({ error: "Avatar URL gecerli bir HTTP veya HTTPS adresi olmalidir" });
+    }
+
+    if (theme && !ALLOWED_PROFILE_THEMES.has(theme)) {
+      return res.status(400).json({ error: "Gecersiz profil temasi" });
+    }
     
     const profile = await Profile.findOneAndUpdate(
       { owner: userId },
@@ -174,7 +194,7 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
     }
 
     // Default Avatar SVG if none provided
-    const avatarImg = profile.avatarUrl 
+    const avatarImg = profile.avatarUrl && isSafeExternalUrl(profile.avatarUrl)
       ? `<img src="${escapeHtml(profile.avatarUrl)}" class="profile-avatar" alt="${escapeHtml(profile.name)}">`
       : `<div class="profile-avatar-fallback">${escapeHtml(profile.name.charAt(0).toUpperCase())}</div>`;
 
@@ -187,7 +207,7 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
       if (folderLinks.length > 0) {
         linksHtml += `
           <div class="folder-section">
-            <div class="folder-header" style="border-left: 5px solid ${escapeHtml(folder.color || '#6200ee')}">
+            <div class="folder-header" style="border-left: 5px solid ${renderColor(folder.color)}">
               <span>${escapeHtml(folder.name)}</span>
             </div>
             <div class="links-grid">
@@ -195,12 +215,12 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
 
         folderLinks.forEach((link) => {
           linksHtml += `
-            <a href="${escapeHtml(link.url)}" target="_blank" class="link-card">
-              ${link.imageUrl ? `<img src="${escapeHtml(link.imageUrl)}" class="link-image" alt="${escapeHtml(link.title || '')}">` : ""}
+            <a href="${renderExternalUrl(link.url)}" target="_blank" rel="noopener noreferrer" class="link-card">
+              ${isSafeExternalUrl(link.imageUrl) ? `<img src="${escapeHtml(link.imageUrl)}" class="link-image" alt="${escapeHtml(link.title || '')}">` : ""}
               <div class="link-info">
                 <div class="link-title">${escapeHtml(link.title || link.url)}</div>
                 ${link.description ? `<div class="link-desc">${escapeHtml(link.description)}</div>` : ""}
-                <span class="link-domain">${escapeHtml(link.siteName || new URL(link.url).hostname)}</span>
+                <span class="link-domain">${escapeHtml(link.siteName || renderHostname(link.url))}</span>
               </div>
             </a>
           `;
@@ -225,12 +245,12 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
 
       uncategorizedLinks.forEach((link) => {
         linksHtml += `
-          <a href="${escapeHtml(link.url)}" target="_blank" class="link-card">
-            ${link.imageUrl ? `<img src="${escapeHtml(link.imageUrl)}" class="link-image" alt="${escapeHtml(link.title || '')}">` : ""}
+          <a href="${renderExternalUrl(link.url)}" target="_blank" rel="noopener noreferrer" class="link-card">
+            ${isSafeExternalUrl(link.imageUrl) ? `<img src="${escapeHtml(link.imageUrl)}" class="link-image" alt="${escapeHtml(link.title || '')}">` : ""}
             <div class="link-info">
               <div class="link-title">${escapeHtml(link.title || link.url)}</div>
               ${link.description ? `<div class="link-desc">${escapeHtml(link.description)}</div>` : ""}
-              <span class="link-domain">${escapeHtml(link.siteName || new URL(link.url).hostname)}</span>
+              <span class="link-domain">${escapeHtml(link.siteName || renderHostname(link.url))}</span>
             </div>
           </a>
         `;
@@ -457,7 +477,7 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
     
     <div class="profile-footer">
       <span>Powered by</span>
-      <a href="https://github.com/miracerdin1/mobile" target="_blank">📄 LinkFlow</a>
+      <a href="https://github.com/miracerdin1/mobile" target="_blank" rel="noopener noreferrer">LinkFlow</a>
     </div>
   </div>
 </body>
