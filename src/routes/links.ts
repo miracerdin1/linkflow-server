@@ -138,7 +138,7 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
     }
 
     // Check write authorization
-    let folderAccess = true;
+    let folderAccess = false; // DEFAULT TO FALSE!
     if (link.folderId) {
       const folder = await Folder.findById(link.folderId);
       if (folder) {
@@ -150,8 +150,15 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
 
     const isLinkOwner = link.owner && link.owner.toString() === userId;
 
-    if (!isLinkOwner && !folderAccess) {
-      return res.status(403).json({ error: "Bu bağlantıyı düzenlemek için yetkiniz yok" });
+    // Fix IDOR: If there is no folder, ONLY the owner can edit it.
+    if (!link.folderId) {
+      if (!isLinkOwner) {
+        return res.status(403).json({ error: "Bu bağlantıyı düzenlemek için yetkiniz yok" });
+      }
+    } else {
+      if (!isLinkOwner && !folderAccess) {
+        return res.status(403).json({ error: "Bu bağlantıyı düzenlemek için yetkiniz yok" });
+      }
     }
 
     // If changing folder, verify write access to new folder
@@ -223,7 +230,7 @@ router.delete("/:id", authenticateToken, async (req: AuthRequest, res: Response)
     }
 
     // Check write authorization
-    let folderAccess = true;
+    let folderAccess = false; // DEFAULT TO FALSE
     if (link.folderId) {
       const folder = await Folder.findById(link.folderId);
       if (folder) {
@@ -235,8 +242,15 @@ router.delete("/:id", authenticateToken, async (req: AuthRequest, res: Response)
 
     const isLinkOwner = link.owner && link.owner.toString() === userId;
 
-    if (!isLinkOwner && !folderAccess) {
-      return res.status(403).json({ error: "Bu bağlantıyı silmek için yetkiniz yok" });
+    // Fix IDOR: If there is no folder, ONLY the owner can delete it.
+    if (!link.folderId) {
+      if (!isLinkOwner) {
+        return res.status(403).json({ error: "Bu bağlantıyı silmek için yetkiniz yok" });
+      }
+    } else {
+      if (!isLinkOwner && !folderAccess) {
+         return res.status(403).json({ error: "Bu bağlantıyı silmek için yetkiniz yok" });
+      }
     }
 
     await Link.findByIdAndDelete(id);
