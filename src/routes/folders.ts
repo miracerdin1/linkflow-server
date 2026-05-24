@@ -3,6 +3,7 @@ import Folder from "../models/Folder";
 import Link from "../models/Link";
 import User from "../models/User";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
+import { isHexColor } from "../utils/validation";
 
 const router = express.Router();
 
@@ -37,6 +38,10 @@ router.post("/", authenticateToken, async (req: AuthRequest, res: Response): Pro
       return res.status(400).json({ error: "Klasör adı zorunludur" });
     }
 
+    if (!isHexColor(color)) {
+      return res.status(400).json({ error: "Gecersiz klasor rengi" });
+    }
+
     const newFolder = new Folder({
       name,
       icon,
@@ -67,6 +72,10 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
     const folder = await Folder.findById(id);
     if (!folder) {
       return res.status(404).json({ error: "Klasör bulunamadı" });
+    }
+
+    if (!isHexColor(color)) {
+      return res.status(400).json({ error: "Gecersiz klasor rengi" });
     }
 
     // Check ownership

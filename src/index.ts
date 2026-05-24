@@ -1,7 +1,8 @@
+import "dotenv/config";
 import cors from "cors";
-import dotenv from "dotenv";
 import express from "express";
 import { createServer } from "http";
+import jwt from "jsonwebtoken";
 import mongoose from "mongoose";
 import { Server } from "socket.io";
 import helmet from "helmet";
@@ -10,72 +11,127 @@ import linkRoutes from "./routes/links";
 import folderRoutes from "./routes/folders";
 import publicRoutes from "./routes/public";
 import authRoutes from "./routes/auth";
-
-dotenv.config();
+import Folder from "./models/Folder";
+import { getJwtSecret } from "./config/auth";
+import { AuthTokenPayload } from "./types/auth";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const corsOrigins = process.env.CORS_ORIGINS
+  ?.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
-// Setup HTTP Server & Socket.io
+const isCorsOriginAllowed = (origin?: string) => {
+  if (!origin) return true;
+  if (!corsOrigins?.length) return process.env.NODE_ENV !== "production";
+
+  return corsOrigins.includes(origin);
+};
+
+getJwtSecret();
+
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "*", // Can be restricted in production
+    origin: (origin, callback) => {
+      if (isCorsOriginAllowed(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error("Socket origin is not allowed."));
+    },
     methods: ["GET", "POST", "PUT", "DELETE"],
   },
 });
 
-// Attach io instance to express app so routes can access it
 app.set("io", io);
 app.set("trust proxy", 1);
 
-// Security Middleware
 app.use(helmet());
-app.use(cors());
-app.use(express.json());
+app.use(cors({
+  origin: (origin, callback) => {
+    if (isCorsOriginAllowed(origin)) {
+      callback(null, true);
+      return;
+    }
 
-// Rate Limiting for Auth Routes
+    callback(new Error("Origin is not allowed."));
+  },
+}));
+app.use(express.json({ limit: "100kb" }));
+
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // limit each IP to 20 requests per windowMs
-  message: { error: "Çok fazla giriş denemesi yapıldı, lütfen 15 dakika sonra tekrar deneyin." }
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  message: { error: "Too many login attempts. Please try again later." },
 });
 
-// Debug Middleware: Log all requests
 app.use((req, res, next) => {
   console.log(`[Incoming Request] ${req.method} ${req.url}`);
   next();
 });
 
-// Basic Route for Health Check
 app.get("/", (req, res) => {
   res.send("LinkFlow API is Running");
 });
 
-// Routes
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/links", linkRoutes);
 app.use("/api/folders", folderRoutes);
 app.use("/", publicRoutes);
 
-// Socket.io connection logic
+io.use((socket, next) => {
+  const authToken = socket.handshake.auth?.token;
+  const authHeader = socket.handshake.headers.authorization;
+  const headerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+  const token = typeof authToken === "string" ? authToken : headerToken;
+
+  if (!token) {
+    next(new Error("Authentication required."));
+    return;
+  }
+
+  try {
+    socket.data.user = jwt.verify(token, getJwtSecret(), { algorithms: ["HS256"] }) as AuthTokenPayload;
+    next();
+  } catch (error) {
+    next(new Error("Invalid authentication token."));
+  }
+});
+
 io.on("connection", (socket) => {
   console.log(`[Socket Connected] Client ID: ${socket.id}`);
 
-  // Client joins a folder room to listen to real-time updates inside it
-  socket.on("join_folder", (folderId) => {
-    if (folderId) {
+  socket.on("join_folder", async (folderId) => {
+    if (typeof folderId !== "string" || !folderId) return;
+
+    try {
+      const folder = await Folder.findById(folderId);
+      const userId = socket.data.user?.id;
+      const hasAccess =
+        !!folder &&
+        ((folder.owner && folder.owner.toString() === userId) ||
+          folder.collaborators.some((cId) => cId.toString() === userId));
+
+      if (!hasAccess) {
+        socket.emit("folder_join_denied", { folderId });
+        return;
+      }
+
       socket.join(`folder_${folderId}`);
       console.log(`[Socket Room] Client ${socket.id} joined room folder_${folderId}`);
+    } catch (error) {
+      socket.emit("folder_join_denied", { folderId });
     }
   });
 
-  // Client leaves a folder room
   socket.on("leave_folder", (folderId) => {
-    if (folderId) {
-      socket.leave(`folder_${folderId}`);
-      console.log(`[Socket Room] Client ${socket.id} left room folder_${folderId}`);
-    }
+    if (typeof folderId !== "string" || !folderId) return;
+
+    socket.leave(`folder_${folderId}`);
+    console.log(`[Socket Room] Client ${socket.id} left room folder_${folderId}`);
   });
 
   socket.on("disconnect", () => {
@@ -83,23 +139,20 @@ io.on("connection", (socket) => {
   });
 });
 
-// MongoDB Connection
 const connectDB = async () => {
   try {
     if (process.env.MONGO_URI) {
       await mongoose.connect(process.env.MONGO_URI);
       console.log("MongoDB Connected");
-    } else {
-      console.log(
-        "MONGO_URI is not defined. Running without DB connection for now.",
-      );
+      return;
     }
+
+    console.log("MONGO_URI is not defined. Running without DB connection for now.");
   } catch (err) {
     console.error("Database connection error:", err);
   }
 };
 
-// Use httpServer to listen so WebSockets work
 httpServer.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   connectDB();
