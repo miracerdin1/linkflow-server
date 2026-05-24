@@ -3,6 +3,7 @@ import Link from "../models/Link";
 import Folder from "../models/Folder";
 import { scrapeMetadata } from "../services/scraper";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
+import { getSafeExternalUrl } from "../utils/url";
 
 const router = express.Router();
 
@@ -12,8 +13,13 @@ const getIo = (req: any) => req.app.get("io");
 // GET /api/links - Get links based on authorization and optional folderId
 router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
-    const { folderId } = req.query;
+    const rawFolderId = req.query.folderId;
+    const folderId = typeof rawFolderId === "string" ? rawFolderId : undefined;
     const userId = req.user?.id;
+
+    if (rawFolderId && !folderId) {
+      return res.status(400).json({ error: "Gecersiz klasor parametresi" });
+    }
 
     if (folderId) {
       if (folderId === "null" || folderId === "none") {
@@ -78,6 +84,13 @@ router.post("/", authenticateToken, async (req: AuthRequest, res: Response): Pro
       return res.status(400).json({ error: "URL adresi zorunludur" });
     }
 
+    let safeUrl: string;
+    try {
+      safeUrl = getSafeExternalUrl(String(url)).href;
+    } catch (error) {
+      return res.status(400).json({ error: "Lutfen gecerli bir HTTP veya HTTPS URL girin" });
+    }
+
     // If folderId is provided, verify folder write access
     if (folderId) {
       const folder = await Folder.findById(folderId);
@@ -95,11 +108,11 @@ router.post("/", authenticateToken, async (req: AuthRequest, res: Response): Pro
     }
 
     // 1. Scrape Metadata
-    const metadata = await scrapeMetadata(url);
+    const metadata = await scrapeMetadata(safeUrl);
 
     // 2. Create Link Record
     const newLink = new Link({
-      url,
+      url: safeUrl,
       ...metadata,
       folderId: folderId || null,
       isPublic: isPublic || false,
@@ -195,7 +208,13 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
     // Update fields
     link.title = title !== undefined ? title : link.title;
     link.description = description !== undefined ? description : link.description;
-    link.url = url !== undefined ? url : link.url;
+    if (url !== undefined) {
+      try {
+        link.url = getSafeExternalUrl(String(url)).href;
+      } catch (error) {
+        return res.status(400).json({ error: "Lutfen gecerli bir HTTP veya HTTPS URL girin" });
+      }
+    }
     link.folderId = newFolderId as any;
     link.isPublic = isPublic !== undefined ? isPublic : link.isPublic;
 
