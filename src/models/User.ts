@@ -6,6 +6,7 @@ export interface IUser extends Document {
   passwordHash: string;
   createdAt: Date;
   plan: "free" | "pro";
+  role: "user" | "admin";
   subscriptionId?: string;
   subscriptionStatus?: "active" | "canceled" | "past_due" | "none";
   subscriptionExpiresAt?: Date;
@@ -34,6 +35,11 @@ const UserSchema: Schema = new Schema({
     type: String,
     enum: ["free", "pro"],
     default: "free",
+  },
+  role: {
+    type: String,
+    enum: ["user", "admin"],
+    default: "user",
   },
   subscriptionId: {
     type: String,
