@@ -7,12 +7,9 @@ import Folder from "../models/Folder";
 import Link from "../models/Link";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
 
-const crypto = require("crypto");
-
 const router = express.Router();
-// Use the same fallback secret logic as middleware or export a shared one. For simplicity, generate another fallback here or require a config. 
-// Since they might differ if generated twice, we will rely on env in prod. For local dev without env, tokens might invalidate on restart, which is acceptable for security.
-const FALLBACK_SECRET = crypto.randomBytes(64).toString("hex");
+// Use a static fallback for development so tokens survive restarts and module reloads.
+const FALLBACK_SECRET = "dev-fallback-secret-linkflow-do-not-use-in-prod";
 const JWT_SECRET = process.env.JWT_SECRET || FALLBACK_SECRET;
 
 // POST /api/auth/register
