@@ -148,9 +148,9 @@ router.post("/login", async (req: any, res: Response): Promise<any> => {
         role: user.role || "user",
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Login error:", error);
-    res.status(500).json({ error: "Sunucu hatasi, lutfen tekrar deneyin" });
+    res.status(500).json({ error: "Sunucu hatasi: " + (error.message || error.toString()) });
   }
 });
 
