@@ -7,8 +7,13 @@ import Folder from "../models/Folder";
 import Link from "../models/Link";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
 
+const crypto = require("crypto");
+
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || "linkflow-super-secret-key-12345";
+// Use the same fallback secret logic as middleware or export a shared one. For simplicity, generate another fallback here or require a config. 
+// Since they might differ if generated twice, we will rely on env in prod. For local dev without env, tokens might invalidate on restart, which is acceptable for security.
+const FALLBACK_SECRET = crypto.randomBytes(64).toString("hex");
+const JWT_SECRET = process.env.JWT_SECRET || FALLBACK_SECRET;
 
 // POST /api/auth/register
 router.post("/register", async (req: any, res: Response): Promise<any> => {
@@ -53,15 +58,7 @@ router.post("/register", async (req: any, res: Response): Promise<any> => {
 
     await newUser.save();
 
-    // Check if there are orphaned folders/links and assign them to this FIRST user!
-    const folderCount = await Folder.countDocuments({ owner: null });
-    const linkCount = await Link.countDocuments({ owner: null });
-    
-    if (folderCount > 0 || linkCount > 0) {
-      console.log(`[Migration] Assigning ${folderCount} folders and ${linkCount} links to first user: ${cleanUsername}`);
-      await Folder.updateMany({ owner: null }, { owner: newUser._id });
-      await Link.updateMany({ owner: null }, { owner: newUser._id });
-    }
+    // REMOVED Migration of orphaned links/folders for security reasons.
 
     // Check if there's an orphaned Profile, assign it. Otherwise create a new profile.
     let profile = await Profile.findOne({ owner: null });

@@ -4,6 +4,8 @@ import express from "express";
 import { createServer } from "http";
 import mongoose from "mongoose";
 import { Server } from "socket.io";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import linkRoutes from "./routes/links";
 import folderRoutes from "./routes/folders";
 import publicRoutes from "./routes/public";
@@ -18,7 +20,7 @@ const PORT = process.env.PORT || 3000;
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
+    origin: "*", // Can be restricted in production
     methods: ["GET", "POST", "PUT", "DELETE"],
   },
 });
@@ -26,8 +28,17 @@ const io = new Server(httpServer, {
 // Attach io instance to express app so routes can access it
 app.set("io", io);
 
+// Security Middleware
+app.use(helmet());
 app.use(cors());
 app.use(express.json());
+
+// Rate Limiting for Auth Routes
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 requests per windowMs
+  message: { error: "Çok fazla giriş denemesi yapıldı, lütfen 15 dakika sonra tekrar deneyin." }
+});
 
 // Debug Middleware: Log all requests
 app.use((req, res, next) => {
@@ -41,7 +52,7 @@ app.get("/", (req, res) => {
 });
 
 // Routes
-app.use("/api/auth", authRoutes);
+app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/links", linkRoutes);
 app.use("/api/folders", folderRoutes);
 app.use("/", publicRoutes);
