@@ -2,6 +2,8 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import dns from "dns";
 import { promisify } from "util";
+import http from "http";
+import https from "https";
 
 const lookupAsync = promisify(dns.lookup);
 
@@ -27,29 +29,38 @@ const isPrivateIP = (ip: string) => {
   );
 };
 
+// Custom DNS lookup function for HTTP agents to block internal IPs even during redirects
+const safeLookup = (
+  hostname: string,
+  options: dns.LookupOneOptions,
+  callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void
+) => {
+  dns.lookup(hostname, options, (err, address, family) => {
+    if (err) return callback(err, "", 0);
+    if (isPrivateIP(address)) {
+      return callback(new Error("SSRF Attempt blocked: Cannot access internal networks."), "", 0);
+    }
+    callback(null, address, family);
+  });
+};
+
+const httpAgent = new http.Agent({ lookup: safeLookup as any });
+const httpsAgent = new https.Agent({ lookup: safeLookup as any });
+
 export const scrapeMetadata = async (url: string): Promise<ScrapedMetadata> => {
   try {
     const parsedUrl = new URL(url);
     const hostname = parsedUrl.hostname;
-
-    // Prevent direct localhost/internal access via DNS lookup
-    try {
-      const { address } = await lookupAsync(hostname);
-      if (isPrivateIP(address)) {
-        throw new Error("SSRF Attempt blocked: Cannot access internal networks.");
-      }
-    } catch (dnsError) {
-       console.warn(`DNS lookup failed or SSRF blocked for ${hostname}:`, dnsError);
-       throw dnsError; // Re-throw to bypass axios fetch
-    }
 
     const { data } = await axios.get(url, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
       },
-      timeout: 5000, // Added timeout for safety
-      maxRedirects: 3,
+      timeout: 5000, // Safety timeout
+      maxContentLength: 5 * 1024 * 1024, // 5MB limit to prevent DoS (OOM)
+      httpAgent,
+      httpsAgent,
     });
 
     const $ = cheerio.load(data);
