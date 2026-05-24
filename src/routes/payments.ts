@@ -2,14 +2,18 @@ import express, { Response } from "express";
 import Stripe from "stripe";
 import User from "../models/User";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
+// @ts-ignore - Iyzipay doesn't have official types
+import Iyzipay from "iyzipay";
 
 const router = express.Router();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_mock_fallback", {
-  apiVersion: "2024-06-20",
+const iyzipay = new Iyzipay({
+  apiKey: process.env.IYZIPAY_API_KEY || "sandbox-dummy-api-key",
+  secretKey: process.env.IYZIPAY_SECRET_KEY || "sandbox-dummy-secret-key",
+  uri: process.env.IYZIPAY_URI || "https://sandbox-api.iyzipay.com"
 });
 
-// POST /api/payments/subscribe - Stripe Checkout Session Oluşturma
+// POST /api/payments/subscribe - Iyzico Checkout Form Oluşturma
 router.post("/subscribe", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
     const userId = req.user?.id;
@@ -22,133 +26,137 @@ router.post("/subscribe", authenticateToken, async (req: AuthRequest, res: Respo
       return res.status(404).json({ error: "Kullanıcı bulunamadı" });
     }
 
-    if (!process.env.STRIPE_SECRET_KEY) {
+    if (!process.env.IYZIPAY_API_KEY) {
       return res.status(500).json({ 
-        message: "Stripe ayarları yapılandırılmamış. Lütfen sunucuya STRIPE_SECRET_KEY ekleyin." 
+        message: "Iyzico ayarları yapılandırılmamış. Lütfen sunucuya IYZIPAY_API_KEY ekleyin." 
       });
     }
 
     const { plan, returnUrl } = req.body;
+    const price = plan === "monthly" ? "99.00" : "699.00";
+    const planName = plan === "monthly" ? "LinkFlow Pro (Aylık)" : "LinkFlow Pro (Yıllık)";
 
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ["card"],
-      mode: "subscription",
-      customer_email: user.email,
-      client_reference_id: userId,
-      line_items: [
+    // Sunucunun base URL'i
+    const serverUrl = req.protocol + "://" + req.get("host");
+    const callbackUrl = `${serverUrl}/api/payments/iyzico-callback?userId=${userId}&returnUrl=${encodeURIComponent(returnUrl || "linkflow://")}`;
+
+    const request = {
+      locale: Iyzipay.LOCALE.TR,
+      conversationId: userId,
+      price: price,
+      paidPrice: price,
+      currency: Iyzipay.CURRENCY.TRY,
+      basketId: "B67832",
+      paymentGroup: Iyzipay.PAYMENT_GROUP.SUBSCRIPTION, // Abonelik tarzı satışı ifade eder (ama tek çekim olacak)
+      callbackUrl: callbackUrl,
+      enabledInstallments: [1],
+      buyer: {
+        id: userId,
+        name: user.username || "John",
+        surname: "Doe", // Gerçek sistemde kullanıcıdan ad soyad alınmalıdır
+        gsmNumber: "+905300000000", // Gerçek sistemde kullanıcıdan alınmalıdır
+        email: user.email,
+        identityNumber: "11111111111", // Gerçek sistemde kullanıcıdan alınmalıdır
+        registrationAddress: "Nidakule Göztepe, Merdivenköy Mah. Bora Sok. No:1", // Mock adres
+        ip: req.ip || "85.34.78.112",
+        city: "Istanbul",
+        country: "Turkey",
+        zipCode: "34732"
+      },
+      shippingAddress: {
+        contactName: user.username || "John Doe",
+        city: "Istanbul",
+        country: "Turkey",
+        address: "Nidakule Göztepe, Merdivenköy Mah. Bora Sok. No:1", // Mock adres
+        zipCode: "34732"
+      },
+      billingAddress: {
+        contactName: user.username || "John Doe",
+        city: "Istanbul",
+        country: "Turkey",
+        address: "Nidakule Göztepe, Merdivenköy Mah. Bora Sok. No:1", // Mock adres
+        zipCode: "34732"
+      },
+      basketItems: [
         {
-          price_data: {
-            currency: "try",
-            recurring: { interval: plan === "monthly" ? "month" : "year" },
-            product_data: {
-              name: "LinkFlow Pro",
-              description: plan === "monthly" ? "Aylık Sınırsız Erişim" : "Yıllık Sınırsız Erişim",
-            },
-            unit_amount: plan === "monthly" ? 9900 : 69900,
-          },
-          quantity: 1,
-        },
-      ],
-      success_url: returnUrl ? `${returnUrl}?status=success` : "http://localhost:8081?status=success",
-      cancel_url: returnUrl ? `${returnUrl}?status=cancel` : "http://localhost:8081?status=cancel",
+          id: plan === "monthly" ? "PRO_MONTHLY" : "PRO_YEARLY",
+          name: planName,
+          category1: "Software",
+          category2: "Subscription",
+          itemType: Iyzipay.BASKET_ITEM_TYPE.VIRTUAL,
+          price: price
+        }
+      ]
+    };
+
+    iyzipay.checkoutFormInitialize.create(request, (err: any, result: any) => {
+      if (err) {
+        console.error("Iyzico form init error:", err);
+        return res.status(500).json({ message: "Ödeme sistemiyle iletişim kurulamadı." });
+      }
+      
+      if (result.status === "success") {
+        res.json({
+          url: result.paymentPageUrl,
+          token: result.token
+        });
+      } else {
+        res.status(400).json({ message: result.errorMessage || "Ödeme formu oluşturulamadı." });
+      }
     });
 
-    res.json({
-      url: session.url,
-      sessionId: session.id,
-    });
   } catch (error: any) {
-    console.error("Stripe session creation error:", error);
+    console.error("Iyzico session creation error:", error);
     res.status(500).json({ message: error.message || "Ödeme oturumu oluşturulurken bir hata oluştu" });
   }
 });
 
-// POST /api/payments/cancel - Abonelik iptali
-router.post("/cancel", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
+// POST /api/payments/iyzico-callback - Iyzico Ödeme Sonucu Yakalayıcı (Webhook / Callback)
+// Bu rotaya Iyzico, kullanıcı ödemeyi bitirdiğinde POST atarak geri döner.
+router.post("/iyzico-callback", async (req: express.Request, res: Response): Promise<any> => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Yetkisiz erişim" });
+    const token = req.body.token;
+    const { userId, returnUrl } = req.query;
+
+    if (!token || !userId) {
+      return res.status(400).send("Geçersiz istek.");
     }
 
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "Kullanıcı bulunamadı" });
-    }
-
-    if (user.subscriptionId && user.subscriptionId.startsWith("sub_")) {
-      await stripe.subscriptions.cancel(user.subscriptionId);
-    }
-
-    user.plan = "free";
-    user.subscriptionStatus = "none";
-    user.subscriptionId = undefined;
-    user.subscriptionExpiresAt = undefined;
-
-    await user.save();
-
-    res.json({
-      message: "Aboneliğiniz iptal edildi, ücretsiz plana döndünüz.",
-      user: {
-        id: user._id,
-        username: user.username,
-        email: user.email,
-        plan: user.plan,
-        subscriptionStatus: user.subscriptionStatus
+    // Token ile sonucu doğrula
+    iyzipay.checkoutForm.retrieve({
+      locale: Iyzipay.LOCALE.TR,
+      conversationId: userId as string,
+      token: token
+    }, async (err: any, result: any) => {
+      if (err) {
+        console.error("Iyzico retrieve error:", err);
+        return res.redirect((returnUrl as string) + "?status=error");
       }
-    });
-  } catch (error: any) {
-    console.error("Subscription cancel error:", error);
-    res.status(500).json({ message: error.message || "Abonelik iptali sırasında bir hata oluştu" });
-  }
-});
 
-// POST /api/payments/webhook - Stripe Webhook Handler
-router.post("/webhook", express.raw({ type: "application/json" }), async (req: express.Request, res: Response): Promise<any> => {
-  const sig = req.headers["stripe-signature"] as string;
-
-  let event;
-  try {
-    event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET || "");
-  } catch (err: any) {
-    console.error("Webhook Signature Error:", err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
-
-  try {
-    if (event.type === "checkout.session.completed") {
-      const session = event.data.object as Stripe.Checkout.Session;
-      const userId = session.client_reference_id;
-      
-      if (userId) {
+      if (result.paymentStatus === "SUCCESS") {
+        // Ödeme başarılı, kullanıcıyı PRO yap!
         await User.findByIdAndUpdate(userId, {
           plan: "pro",
           subscriptionStatus: "active",
-          subscriptionId: session.subscription as string,
+          subscriptionId: result.paymentId // Iyzico'nun paymentId'sini abonelik ID'si gibi saklıyoruz
         });
-        console.log(`[Stripe Webhook] User ${userId} upgraded to PRO.`);
+        
+        console.log(`[Iyzico] User ${userId} upgraded to PRO. Payment ID: ${result.paymentId}`);
+        return res.redirect((returnUrl as string) + "?status=success");
+      } else {
+        // Ödeme başarısız
+        console.log(`[Iyzico] Payment failed for user ${userId}. Error: ${result.errorMessage}`);
+        return res.redirect((returnUrl as string) + "?status=cancel");
       }
-    }
-    
-    // Check if subscription deleted
-    if (event.type === "customer.subscription.deleted") {
-      const subscription = event.data.object as Stripe.Subscription;
-      await User.findOneAndUpdate(
-        { subscriptionId: subscription.id }, 
-        {
-          plan: "free",
-          subscriptionStatus: "canceled",
-          subscriptionId: undefined,
-          subscriptionExpiresAt: undefined
-        }
-      );
-      console.log(`[Stripe Webhook] Subscription ${subscription.id} canceled.`);
-    }
+    });
 
-    res.json({ received: true });
   } catch (err: any) {
-    console.error("Webhook processing error:", err.message);
-    res.status(500).send("Webhook processing error");
+    console.error("Iyzico callback processing error:", err.message);
+    const returnUrl = req.query.returnUrl as string;
+    if (returnUrl) {
+      return res.redirect(returnUrl + "?status=error");
+    }
+    res.status(500).send("Sistem hatası");
   }
 });
 

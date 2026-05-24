@@ -61,13 +61,8 @@ app.use(cors({
     callback(new Error("Origin is not allowed."));
   },
 }));
-app.use((req, res, next) => {
-  if (req.originalUrl === '/api/payments/webhook') {
-    next();
-  } else {
-    express.json({ limit: "100kb" })(req, res, next);
-  }
-});
+app.use(express.json({ limit: "100kb" }));
+app.use(express.urlencoded({ extended: true }));
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
