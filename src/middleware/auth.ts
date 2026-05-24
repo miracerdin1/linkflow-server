@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import crypto from "crypto";
 
 export interface AuthRequest extends Request {
   user?: {
@@ -10,8 +9,11 @@ export interface AuthRequest extends Request {
   };
 }
 
-// Generate a random 64-byte hex string once per server lifecycle if env is missing
-const FALLBACK_SECRET = crypto.randomBytes(64).toString("hex");
+// Use a static fallback for development so tokens survive restarts and module reloads.
+const FALLBACK_SECRET = "dev-fallback-secret-linkflow-do-not-use-in-prod";
+if (!process.env.JWT_SECRET) {
+  console.warn("⚠️  UYARI: .env dosyasında JWT_SECRET bulunamadı! Geliştirme (fallback) şifresi kullanılıyor. Üretim ortamında KESİNLİKLE bir JWT_SECRET tanımlayın.");
+}
 
 export const authenticateToken = (
   req: AuthRequest,
