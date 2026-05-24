@@ -11,6 +11,7 @@ import linkRoutes from "./routes/links";
 import folderRoutes from "./routes/folders";
 import publicRoutes from "./routes/public";
 import authRoutes from "./routes/auth";
+import paymentsRoutes from "./routes/payments";
 import Folder from "./models/Folder";
 import { getJwtSecret } from "./config/auth";
 import { AuthTokenPayload } from "./types/auth";
@@ -80,6 +81,7 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/links", linkRoutes);
 app.use("/api/folders", folderRoutes);
+app.use("/api/payments", paymentsRoutes);
 app.use("/", publicRoutes);
 
 io.use((socket, next) => {
