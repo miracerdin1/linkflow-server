@@ -1,4 +1,5 @@
 import axios from "axios";
+import mongoose from "mongoose";
 import User from "../models/User";
 import {
   RevenueCatEntitlement,
@@ -82,13 +83,14 @@ export const fetchRevenueCatSubscriber = async (appUserId: string) => {
   return response.data.subscriber;
 };
 
-export const syncRevenueCatPlanForUser = async (userId: string) => {
-  const user = await User.findById(userId);
-  if (!user) {
-    throw new Error("User not found.");
-  }
+const findUserByRevenueCatAppUserId = (appUserId: string) => {
+  if (!mongoose.isValidObjectId(appUserId)) return null;
 
-  const subscriber = await fetchRevenueCatSubscriber(userId);
+  return User.findById(appUserId);
+};
+
+const syncRevenueCatPlanForExistingUser = async (user: any) => {
+  const subscriber = await fetchRevenueCatSubscriber(user._id.toString());
   const planState = getPlanState(subscriber);
 
   user.plan = planState.plan;
@@ -99,4 +101,20 @@ export const syncRevenueCatPlanForUser = async (userId: string) => {
   await user.save();
 
   return getPublicUser(user);
+};
+
+export const syncRevenueCatPlanForUser = async (userId: string) => {
+  const user = await findUserByRevenueCatAppUserId(userId);
+  if (!user) {
+    throw new Error("User not found.");
+  }
+
+  return syncRevenueCatPlanForExistingUser(user);
+};
+
+export const trySyncRevenueCatPlanForUser = async (userId: string) => {
+  const user = await findUserByRevenueCatAppUserId(userId);
+  if (!user) return null;
+
+  return syncRevenueCatPlanForExistingUser(user);
 };
