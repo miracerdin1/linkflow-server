@@ -5,6 +5,7 @@ import User from "../models/User";
 import Profile from "../models/Profile";
 import { getJwtSecret } from "../config/auth";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
+import { deleteAccountById } from "../services/accountDeletion";
 
 const router = express.Router();
 const PASSWORD_MIN_LENGTH = 8;
@@ -164,6 +165,26 @@ router.get("/me", authenticateToken, async (req: AuthRequest, res: Response): Pr
     res.json(user);
   } catch (error) {
     res.status(500).json({ error: "Sunucu hatasi" });
+  }
+});
+
+// DELETE /api/auth/account
+router.delete("/account", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Yetkisiz islem" });
+    }
+
+    const deleted = await deleteAccountById(userId);
+    if (!deleted) {
+      return res.status(404).json({ error: "Kullanici bulunamadi" });
+    }
+
+    res.json({ message: "Hesap kalici olarak silindi" });
+  } catch (error) {
+    console.error("Account deletion error:", error);
+    res.status(500).json({ error: "Hesap silinemedi" });
   }
 });
 
