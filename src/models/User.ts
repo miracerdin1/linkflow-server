@@ -7,9 +7,9 @@ export interface IUser extends Document {
   createdAt: Date;
   plan: "free" | "pro";
   role: "user" | "admin";
-  subscriptionId?: string;
+  subscriptionId?: string | null;
   subscriptionStatus?: "active" | "canceled" | "past_due" | "none";
-  subscriptionExpiresAt?: Date;
+  subscriptionExpiresAt?: Date | null;
 }
 
 const UserSchema: Schema = new Schema({

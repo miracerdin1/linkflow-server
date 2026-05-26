@@ -1,7 +1,7 @@
 import express, { Response } from "express";
-import Stripe from "stripe";
 import User from "../models/User";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
+import { syncRevenueCatPlanForUser } from "../services/revenueCat";
 // @ts-ignore - Iyzipay doesn't have official types
 import Iyzipay from "iyzipay";
 
@@ -13,9 +13,60 @@ const iyzipay = new Iyzipay({
   uri: process.env.IYZIPAY_URI || "https://sandbox-api.iyzipay.com"
 });
 
+// POST /api/payments/sync-revenuecat - StoreKit/Play Billing durumunu RevenueCat uzerinden dogrula
+router.post("/sync-revenuecat", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ error: "Yetkisiz erisim" });
+    }
+
+    const user = await syncRevenueCatPlanForUser(userId);
+
+    res.json({ user });
+  } catch (error: any) {
+    console.error("RevenueCat sync error:", error);
+    res.status(500).json({
+      message: error.message || "Magaza satin alma durumu dogrulanamadi.",
+    });
+  }
+});
+
+// POST /api/payments/revenuecat-webhook - RevenueCat subscription lifecycle sync
+router.post("/revenuecat-webhook", async (req: express.Request, res: Response): Promise<any> => {
+  const expectedAuthHeader = process.env.REVENUECAT_WEBHOOK_AUTH_HEADER;
+  if (!expectedAuthHeader) {
+    return res.status(503).json({ error: "RevenueCat webhook is not configured." });
+  }
+
+  if (req.headers.authorization !== expectedAuthHeader) {
+    return res.status(401).json({ error: "Invalid webhook authorization." });
+  }
+
+  try {
+    const appUserId = req.body?.event?.app_user_id;
+    if (!appUserId) {
+      return res.json({ received: true, synced: false });
+    }
+
+    await syncRevenueCatPlanForUser(String(appUserId));
+
+    res.json({ received: true, synced: true });
+  } catch (error) {
+    console.error("RevenueCat webhook error:", error);
+    res.status(500).json({ error: "RevenueCat webhook could not be processed." });
+  }
+});
+
 // POST /api/payments/subscribe - Iyzico Checkout Form Oluşturma
 router.post("/subscribe", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
+    if (process.env.ENABLE_LEGACY_IYZICO_CHECKOUT !== "true") {
+      return res.status(410).json({
+        message: "Mobil uygulamada satin alma islemleri App Store veya Google Play uzerinden yapilmalidir.",
+      });
+    }
+
     const userId = req.user?.id;
     if (!userId) {
       return res.status(401).json({ error: "Yetkisiz erişim" });
