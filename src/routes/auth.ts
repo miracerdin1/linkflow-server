@@ -8,12 +8,22 @@ import { authenticateToken, AuthRequest } from "../middleware/auth";
 import { deleteAccountById } from "../services/accountDeletion";
 
 const router = express.Router();
-const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MIN_LENGTH = 6;
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const createToken = (user: { _id: unknown; username: string; email: string; role: string }) =>
+const createToken = (user: {
+  _id: unknown;
+  username: string;
+  email: string;
+  role: string;
+}) =>
   jwt.sign(
-    { id: user._id, username: user.username, email: user.email, role: user.role },
+    {
+      id: user._id,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+    },
     getJwtSecret(),
     { expiresIn: "30d", algorithm: "HS256" },
   );
@@ -33,15 +43,22 @@ router.post("/register", async (req: any, res: Response): Promise<any> => {
     const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
 
     if (!usernameRegex.test(cleanUsername)) {
-      return res.status(400).json({ error: "Kullanici adi 3-20 karakter olmali ve sadece harf, rakam ve alt cizgi icermelidir." });
+      return res.status(400).json({
+        error:
+          "Kullanici adi 3-20 karakter olmali ve sadece harf, rakam ve alt cizgi icermelidir.",
+      });
     }
 
     if (!EMAIL_REGEX.test(cleanEmail)) {
-      return res.status(400).json({ error: "Lutfen gecerli bir e-posta adresi girin." });
+      return res
+        .status(400)
+        .json({ error: "Lutfen gecerli bir e-posta adresi girin." });
     }
 
     if (cleanPassword.length < PASSWORD_MIN_LENGTH) {
-      return res.status(400).json({ error: `Sifre en az ${PASSWORD_MIN_LENGTH} karakter olmalidir.` });
+      return res.status(400).json({
+        error: `Sifre en az ${PASSWORD_MIN_LENGTH} karakter olmalidir.`,
+      });
     }
 
     const existingUser = await User.findOne({
@@ -50,17 +67,23 @@ router.post("/register", async (req: any, res: Response): Promise<any> => {
 
     if (existingUser) {
       if (existingUser.username === cleanUsername) {
-        return res.status(400).json({ error: "Bu kullanici adi zaten alinmis" });
+        return res
+          .status(400)
+          .json({ error: "Bu kullanici adi zaten alinmis" });
       }
-      return res.status(400).json({ error: "Bu e-posta adresi zaten kullanimda" });
+      return res
+        .status(400)
+        .json({ error: "Bu e-posta adresi zaten kullanimda" });
     }
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(cleanPassword, salt);
-    
+
     // Automatically assign admin role if email matches ADMIN_EMAIL from env
-    const isAdmin = process.env.ADMIN_EMAIL && cleanEmail === process.env.ADMIN_EMAIL.toLowerCase();
-    
+    const isAdmin =
+      process.env.ADMIN_EMAIL &&
+      cleanEmail === process.env.ADMIN_EMAIL.toLowerCase();
+
     const newUser = new User({
       username: cleanUsername,
       email: cleanEmail,
@@ -115,16 +138,24 @@ router.post("/login", async (req: any, res: Response): Promise<any> => {
     });
 
     if (!user) {
-      return res.status(400).json({ error: "Kullanici adi, e-posta veya sifre hatali" });
+      return res
+        .status(400)
+        .json({ error: "Kullanici adi, e-posta veya sifre hatali" });
     }
 
     const isMatch = await bcrypt.compare(cleanPassword, user.passwordHash);
     if (!isMatch) {
-      return res.status(400).json({ error: "Kullanici adi, e-posta veya sifre hatali" });
+      return res
+        .status(400)
+        .json({ error: "Kullanici adi, e-posta veya sifre hatali" });
     }
 
     // Automatically assign admin role if email matches ADMIN_EMAIL from env
-    if (process.env.ADMIN_EMAIL && user.email === process.env.ADMIN_EMAIL.toLowerCase() && user.role !== "admin") {
+    if (
+      process.env.ADMIN_EMAIL &&
+      user.email === process.env.ADMIN_EMAIL.toLowerCase() &&
+      user.role !== "admin"
+    ) {
       user.role = "admin";
       await user.save();
     }
@@ -151,41 +182,51 @@ router.post("/login", async (req: any, res: Response): Promise<any> => {
     });
   } catch (error: any) {
     console.error("Login error:", error);
-    res.status(500).json({ error: "Sunucu hatasi: " + (error.message || error.toString()) });
+    res
+      .status(500)
+      .json({ error: "Sunucu hatasi: " + (error.message || error.toString()) });
   }
 });
 
 // GET /api/auth/me
-router.get("/me", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
-  try {
-    const user = await User.findById(req.user?.id).select("-passwordHash");
-    if (!user) {
-      return res.status(404).json({ error: "Kullanici bulunamadi" });
+router.get(
+  "/me",
+  authenticateToken,
+  async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+      const user = await User.findById(req.user?.id).select("-passwordHash");
+      if (!user) {
+        return res.status(404).json({ error: "Kullanici bulunamadi" });
+      }
+      res.json(user);
+    } catch (error) {
+      res.status(500).json({ error: "Sunucu hatasi" });
     }
-    res.json(user);
-  } catch (error) {
-    res.status(500).json({ error: "Sunucu hatasi" });
-  }
-});
+  },
+);
 
 // DELETE /api/auth/account
-router.delete("/account", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: "Yetkisiz islem" });
-    }
+router.delete(
+  "/account",
+  authenticateToken,
+  async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+      const userId = req.user?.id;
+      if (!userId) {
+        return res.status(401).json({ error: "Yetkisiz islem" });
+      }
 
-    const deleted = await deleteAccountById(userId);
-    if (!deleted) {
-      return res.status(404).json({ error: "Kullanici bulunamadi" });
-    }
+      const deleted = await deleteAccountById(userId);
+      if (!deleted) {
+        return res.status(404).json({ error: "Kullanici bulunamadi" });
+      }
 
-    res.json({ message: "Hesap kalici olarak silindi" });
-  } catch (error) {
-    console.error("Account deletion error:", error);
-    res.status(500).json({ error: "Hesap silinemedi" });
-  }
-});
+      res.json({ message: "Hesap kalici olarak silindi" });
+    } catch (error) {
+      console.error("Account deletion error:", error);
+      res.status(500).json({ error: "Hesap silinemedi" });
+    }
+  },
+);
 
 export default router;
