@@ -1,7 +1,10 @@
 import express, { Response } from "express";
 import User from "../models/User";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
-import { syncRevenueCatPlanForUser } from "../services/revenueCat";
+import {
+  syncRevenueCatPlanForUser,
+  trySyncRevenueCatPlanForUser,
+} from "../services/revenueCat";
 // @ts-ignore - Iyzipay doesn't have official types
 import Iyzipay from "iyzipay";
 
@@ -49,7 +52,10 @@ router.post("/revenuecat-webhook", async (req: express.Request, res: Response): 
       return res.json({ received: true, synced: false });
     }
 
-    await syncRevenueCatPlanForUser(String(appUserId));
+    const user = await trySyncRevenueCatPlanForUser(String(appUserId));
+    if (!user) {
+      return res.json({ received: true, synced: false });
+    }
 
     res.json({ received: true, synced: true });
   } catch (error) {
