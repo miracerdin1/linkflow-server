@@ -20,8 +20,8 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Prom
         { collaborators: req.user?.id }
       ]
     })
-    .populate("owner", "username email")
-    .populate("collaborators", "username email")
+    .populate("owner", "username")
+    .populate("collaborators", "username")
     .sort({ name: 1 });
 
     res.json(folders);
@@ -55,8 +55,8 @@ router.post("/", authenticateToken, checkFolderQuota, async (req: AuthRequest, r
     await newFolder.save();
     
     const populatedFolder = await Folder.findById(newFolder._id)
-      .populate("owner", "username email")
-      .populate("collaborators", "username email");
+      .populate("owner", "username")
+      .populate("collaborators", "username");
 
     res.status(201).json(populatedFolder);
   } catch (error) {
@@ -92,8 +92,8 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
     await folder.save();
     
     const populatedFolder = await Folder.findById(folder._id)
-      .populate("owner", "username email")
-      .populate("collaborators", "username email");
+      .populate("owner", "username")
+      .populate("collaborators", "username");
 
     // Real-time Update
     const io = getIo(req);
@@ -190,8 +190,8 @@ router.post("/:id/collaborators", authenticateToken, checkCollaboratorQuota, asy
     await folder.save();
 
     const populatedFolder = await Folder.findById(folder._id)
-      .populate("owner", "username email")
-      .populate("collaborators", "username email");
+      .populate("owner", "username")
+      .populate("collaborators", "username");
 
     // Real-time Notify
     const io = getIo(req);
@@ -230,8 +230,8 @@ router.delete("/:id/collaborators/:userId", authenticateToken, async (req: AuthR
     await folder.save();
 
     const populatedFolder = await Folder.findById(folder._id)
-      .populate("owner", "username email")
-      .populate("collaborators", "username email");
+      .populate("owner", "username")
+      .populate("collaborators", "username");
 
     // Real-time Notify
     const io = getIo(req);
@@ -278,8 +278,8 @@ router.post("/:id/leave", authenticateToken, async (req: AuthRequest, res: Respo
     await folder.save();
 
     const populatedFolder = await Folder.findById(folder._id)
-      .populate("owner", "username email")
-      .populate("collaborators", "username email");
+      .populate("owner", "username")
+      .populate("collaborators", "username");
 
     // Real-time Notify
     const io = getIo(req);
