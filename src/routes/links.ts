@@ -1,15 +1,27 @@
 import express, { Response } from "express";
+import rateLimit from "express-rate-limit";
 import Link from "../models/Link";
 import Folder from "../models/Folder";
 import { scrapeMetadata } from "../services/scraper";
+import { isLinkReachable } from "../services/linkChecker";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
 import { checkLinkQuota } from "../middleware/quota";
 import { getSafeExternalUrl } from "../utils/url";
+import { normalizeUrlForCompare } from "../utils/normalizeUrl";
 
 const router = express.Router();
 
 // Helper to get io instance
 const getIo = (req: any) => req.app.get("io");
+
+// check-broken makes real outbound HTTP requests per saved link, so without a
+// limit an authenticated caller could repeatedly trigger it to hammer any
+// host they've saved a link to.
+const checkBrokenLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: "Çok fazla bozuk link kontrolü istendi. Lütfen daha sonra tekrar deneyin." },
+});
 
 // GET /api/links - Get links based on authorization and optional folderId
 router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
@@ -72,6 +84,83 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Prom
     res.json(links);
   } catch (error) {
     res.status(500).json({ error: "Linkler yüklenirken bir hata oluştu" });
+  }
+});
+
+// GET /api/links/check-duplicate?url=... - Non-blocking check before saving a link
+router.get("/check-duplicate", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
+  try {
+    const rawUrl = req.query.url;
+    if (typeof rawUrl !== "string" || !rawUrl.trim()) {
+      return res.status(400).json({ error: "URL parametresi zorunludur" });
+    }
+
+    const userId = req.user?.id;
+    const normalizedTarget = normalizeUrlForCompare(rawUrl);
+    if (!normalizedTarget) {
+      return res.json({ duplicate: false });
+    }
+
+    const existingLinks = await Link.find({ owner: userId }).select("url title imageUrl folderId createdAt");
+    const match = existingLinks.find((l) => normalizeUrlForCompare(l.url) === normalizedTarget);
+
+    if (!match) {
+      return res.json({ duplicate: false });
+    }
+
+    res.json({
+      duplicate: true,
+      link: {
+        _id: match._id,
+        title: match.title,
+        url: match.url,
+        imageUrl: match.imageUrl,
+        folderId: match.folderId,
+        createdAt: match.createdAt,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Kopya kontrolü yapılamadı" });
+  }
+});
+
+// POST /api/links/check-broken - Bulk-check the caller's own links for reachability
+router.post("/check-broken", authenticateToken, checkBrokenLimiter, async (req: AuthRequest, res: Response): Promise<any> => {
+  try {
+    const userId = req.user?.id;
+    const MAX_CHECK = 60;
+
+    // Links never checked (lastCheckedAt absent) sort first in ascending order,
+    // so a user with more than MAX_CHECK links still gets full coverage over
+    // repeated taps instead of only ever checking the same first page.
+    const links = await Link.find({ owner: userId })
+      .sort({ lastCheckedAt: 1 })
+      .limit(MAX_CHECK);
+
+    // Each check is capped at ~12s in isLinkReachable and this route is
+    // itself rate-limited, so running the whole (small) batch in parallel
+    // keeps the worst case around one check's duration instead of stacking.
+    const results = await Promise.all(
+      links.map(async (link) => {
+        const reachable = await isLinkReachable(link.url);
+        link.isBroken = !reachable;
+        link.lastCheckedAt = new Date();
+        await link.save();
+        return reachable;
+      }),
+    );
+    const brokenCount = results.filter((reachable) => !reachable).length;
+
+    await Link.populate(links, { path: "owner", select: "username email" });
+
+    res.json({
+      checked: links.length,
+      brokenCount,
+      links,
+    });
+  } catch (error) {
+    console.error("Error checking broken links:", error);
+    res.status(500).json({ error: "Bozuk link kontrolü yapılamadı" });
   }
 });
 

@@ -1,10 +1,11 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
-import dns from "dns";
-import { getSafeExternalUrl, isPrivateAddress, isSafeExternalUrl } from "../utils/url";
+import { getSafeExternalUrl, isSafeExternalUrl } from "../utils/url";
+import { assertPublicHostname, createSafeLookup } from "../utils/safeFetch";
 
-const dnsPromises = dns.promises;
 const MAX_METADATA_BYTES = 1024 * 1024;
+const MAX_REDIRECTS = 5;
+const OVERALL_TIMEOUT_MS = 5000;
 
 interface ScrapedMetadata {
   title?: string;
@@ -14,50 +15,53 @@ interface ScrapedMetadata {
   category: "Video" | "Article" | "Product" | "Social" | "Other";
 }
 
-const assertPublicHostname = async (hostname: string) => {
-  const addresses = await dnsPromises.lookup(hostname, { all: true });
+// Redirects are followed manually (not via axios's maxRedirects) so every
+// hop gets the same SSRF validation (public-hostname check + pinned DNS
+// lookup) as the original URL, instead of trusting wherever a 3xx points.
+// All hops share one overall deadline (rather than a fresh timeout each),
+// so a slow redirect chain can't block the caller far longer than a single
+// request would have.
+const fetchWithSafeRedirects = async (
+  url: string,
+  deadline: number = Date.now() + OVERALL_TIMEOUT_MS,
+  redirectsLeft = MAX_REDIRECTS,
+): Promise<{ data: unknown; finalUrl: URL }> => {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) throw new Error("Metadata fetch timed out.");
 
-  if (addresses.length === 0 || addresses.some(({ address }) => isPrivateAddress(address))) {
-    throw new Error("Cannot access internal network addresses.");
+  const parsedUrl = getSafeExternalUrl(url);
+  const safeAddresses = await assertPublicHostname(parsedUrl.hostname);
+
+  const response = await axios.get(parsedUrl.href, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    },
+    timeout: remainingMs,
+    maxRedirects: 0,
+    maxContentLength: MAX_METADATA_BYTES,
+    maxBodyLength: MAX_METADATA_BYTES,
+    lookup: createSafeLookup(safeAddresses),
+    validateStatus: (status: number) => (status >= 200 && status < 300) || (status >= 300 && status < 400),
+  } as any);
+
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.location;
+    if (!location) throw new Error("Redirect response is missing a Location header.");
+    if (redirectsLeft <= 0) throw new Error("Too many redirects.");
+
+    const nextUrl = new URL(location, parsedUrl.href).href;
+    return fetchWithSafeRedirects(nextUrl, deadline, redirectsLeft - 1);
   }
 
-  return addresses;
-};
-
-const createSafeLookup = (allowedAddresses: dns.LookupAddress[]) => (
-  hostname: string,
-  options: dns.LookupOptions,
-  callback: (err: NodeJS.ErrnoException | null, address: string, family: number) => void,
-) => {
-  const matchingAddress = allowedAddresses.find(({ family }) => !options.family || family === options.family);
-
-  if (matchingAddress) {
-    callback(null, matchingAddress.address, matchingAddress.family);
-    return;
-  }
-
-  callback(Object.assign(new Error(`No safe address found for ${hostname}`), { code: "ENOTFOUND" }), "", 0);
+  return { data: response.data, finalUrl: parsedUrl };
 };
 
 export const scrapeMetadata = async (url: string): Promise<ScrapedMetadata> => {
   try {
-    const parsedUrl = getSafeExternalUrl(url);
-    const hostname = parsedUrl.hostname;
-    const safeAddresses = await assertPublicHostname(hostname);
+    const { data, finalUrl: parsedUrl } = await fetchWithSafeRedirects(url);
 
-    const { data } = await axios.get(parsedUrl.href, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-      },
-      timeout: 5000,
-      maxRedirects: 0,
-      maxContentLength: MAX_METADATA_BYTES,
-      maxBodyLength: MAX_METADATA_BYTES,
-      lookup: createSafeLookup(safeAddresses),
-    } as any);
-
-    const $ = cheerio.load(data);
+    const $ = cheerio.load(data as any);
 
     const resolveUrl = (relativeUrl?: string) => {
       if (!relativeUrl) return undefined;
