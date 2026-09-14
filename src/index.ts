@@ -142,19 +142,31 @@ io.on("connection", (socket) => {
   });
 });
 
-const connectDB = async () => {
-  try {
-    if (process.env.MONGO_URI) {
-      await mongoose.connect(process.env.MONGO_URI);
-      console.log("MongoDB Connected");
-      return;
-    }
+const DB_RETRY_DELAY_MS = 5000;
 
+const connectDB = async (attempt = 1): Promise<void> => {
+  if (!process.env.MONGO_URI) {
     console.log("MONGO_URI is not defined. Running without DB connection for now.");
+    return;
+  }
+
+  try {
+    await mongoose.connect(process.env.MONGO_URI, {
+      serverSelectionTimeoutMS: 10000,
+    });
+    console.log("MongoDB Connected");
   } catch (err) {
-    console.error("Database connection error:", err);
+    // Transient DNS/SRV or network failures at boot must not leave the server
+    // permanently detached from the DB (every query would then buffer and time out).
+    console.error(`Database connection error (attempt ${attempt}):`, err);
+    console.log(`Retrying MongoDB connection in ${DB_RETRY_DELAY_MS / 1000}s...`);
+    setTimeout(() => connectDB(attempt + 1), DB_RETRY_DELAY_MS);
   }
 };
+
+mongoose.connection.on("disconnected", () => {
+  console.warn("MongoDB disconnected. Driver will attempt to reconnect automatically.");
+});
 
 httpServer.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);

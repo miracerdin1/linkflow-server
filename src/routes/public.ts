@@ -86,11 +86,11 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
           <title>Kullanıcı Bulunamadı - LinkFlow</title>
           <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
           <style>
-            body { font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #1a1a2e; color: #fff; text-align: center; }
-            .card { background: rgba(255,255,255,0.05); padding: 40px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.1); max-width: 400px; }
-            h1 { color: #ff5e62; font-size: 28px; margin-bottom: 12px; }
+            body { font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f7fb; color: #162033; text-align: center; }
+            .card { background: #ffffff; padding: 40px; border-radius: 24px; border: 1px solid #dce2ec; max-width: 400px; box-shadow: 0 12px 32px rgba(28,52,127,0.08); }
+            h1 { color: #3157d5; font-size: 28px; margin-bottom: 12px; }
             p { font-size: 16px; opacity: 0.8; margin-bottom: 24px; }
-            .btn { background: #6200ee; color: #fff; padding: 12px 24px; border-radius: 12px; text-decoration: none; font-weight: bold; }
+            .btn { background: #3157d5; color: #fff; padding: 12px 24px; border-radius: 12px; text-decoration: none; font-weight: bold; }
           </style>
         </head>
         <body>
@@ -151,44 +151,44 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
 
     switch (profile.theme) {
       case "sunset":
-        backgroundGradient = "linear-gradient(135deg, #ff5e62 0%, #ff9966 100%)";
+        backgroundGradient = "linear-gradient(135deg, #fff7f3 0%, #ffe9df 100%)";
         themeStyles = `
-          body { color: #2d1303; }
-          .profile-container { background: rgba(255, 255, 255, 0.25); border: 1px solid rgba(255, 255, 255, 0.4); }
-          .link-card { background: rgba(255, 255, 255, 0.85); color: #2d1303; border: 1px solid rgba(255, 255, 255, 0.5); }
-          .link-card:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(255, 94, 98, 0.2); }
-          .folder-header { color: #fff; background: rgba(255, 94, 98, 0.85); }
+          body { color: #2a1c18; }
+          .profile-container { background: rgba(255, 255, 255, 0.78); border: 1px solid #ead8d0; }
+          .link-card { background: #ffffff; color: #2a1c18; border: 1px solid #ead8d0; }
+          .link-card:hover { transform: translateY(-3px); border-color: #d95d39; box-shadow: 0 10px 24px rgba(88, 45, 31, 0.1); }
+          .folder-header { color: #7a2d19; background: #ffe2d8; border: 1px solid #ead8d0; }
         `;
         break;
       case "nordic-light":
-        backgroundGradient = "linear-gradient(135deg, #eef2f3 0%, #8e9eab 100%)";
+        backgroundGradient = "linear-gradient(135deg, #f4f7f4 0%, #e4eee8 100%)";
         themeStyles = `
-          body { color: #2c3e50; }
-          .profile-container { background: rgba(255, 255, 255, 0.6); border: 1px solid rgba(255, 255, 255, 0.8); }
-          .link-card { background: #ffffff; color: #2c3e50; border: 1px solid #e0e0e0; }
-          .link-card:hover { transform: translateY(-3px); box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05); }
-          .folder-header { color: #2c3e50; background: #ffffff; border: 1px solid #e0e0e0; }
+          body { color: #17251f; }
+          .profile-container { background: rgba(255, 255, 255, 0.8); border: 1px solid #d5e1da; }
+          .link-card { background: #ffffff; color: #17251f; border: 1px solid #d5e1da; }
+          .link-card:hover { transform: translateY(-3px); border-color: #34715a; box-shadow: 0 10px 24px rgba(31, 74, 56, 0.1); }
+          .folder-header { color: #1b4636; background: #dcebe4; border: 1px solid #d5e1da; }
         `;
         break;
       case "glassmorphic":
-        backgroundGradient = "radial-gradient(circle at 50% 50%, #1a1a2e 0%, #0f0c1b 100%)";
+        backgroundGradient = "linear-gradient(135deg, #f8f6fc 0%, #eee9f8 100%)";
         themeStyles = `
-          body { color: #ffffff; }
-          .profile-container { background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(20px); }
-          .link-card { background: rgba(255, 255, 255, 0.05); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.08); backdrop-filter: blur(10px); }
-          .link-card:hover { transform: translateY(-3px); background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.2); box-shadow: 0 10px 25px rgba(255, 255, 255, 0.05); }
-          .folder-header { color: #ffffff; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.15); }
+          body { color: #211a2d; }
+          .profile-container { background: rgba(255, 255, 255, 0.8); border: 1px solid #e1daeb; backdrop-filter: blur(18px); }
+          .link-card { background: #ffffff; color: #211a2d; border: 1px solid #e1daeb; }
+          .link-card:hover { transform: translateY(-3px); border-color: #6d52b5; box-shadow: 0 10px 24px rgba(63, 45, 118, 0.1); }
+          .folder-header { color: #3f2d76; background: #eae3fa; border: 1px solid #e1daeb; }
         `;
         break;
       case "purple-dark":
       default:
-        backgroundGradient = "linear-gradient(135deg, #1f1c2c 0%, #928dab 100%)";
+        backgroundGradient = "linear-gradient(135deg, #f5f7fb 0%, #e8edfa 100%)";
         themeStyles = `
-          body { color: #ffffff; }
-          .profile-container { background: rgba(31, 28, 44, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); backdrop-filter: blur(15px); }
-          .link-card { background: rgba(255, 255, 255, 0.1); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.15); }
-          .link-card:hover { transform: translateY(-3px); background: rgba(255, 255, 255, 0.15); border-color: rgba(255, 255, 255, 0.3); box-shadow: 0 10px 20px rgba(98, 0, 238, 0.25); }
-          .folder-header { color: #ffffff; background: rgba(98, 0, 238, 0.7); }
+          body { color: #162033; }
+          .profile-container { background: rgba(255, 255, 255, 0.82); border: 1px solid #dce2ec; }
+          .link-card { background: #ffffff; color: #162033; border: 1px solid #dce2ec; }
+          .link-card:hover { transform: translateY(-3px); border-color: #3157d5; box-shadow: 0 10px 24px rgba(28, 52, 127, 0.1); }
+          .folder-header { color: #1c347f; background: #e1e8ff; border: 1px solid #dce2ec; }
         `;
         break;
     }
@@ -501,11 +501,11 @@ router.get("/bio", (req, res) => {
       <title>LinkFlow Bio</title>
       <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
       <style>
-        body { font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #1a1a2e; color: #fff; text-align: center; }
-        .card { background: rgba(255,255,255,0.05); padding: 40px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.1); max-width: 400px; }
-        h1 { color: #6200ee; font-size: 28px; margin-bottom: 12px; }
+        body { font-family: 'Outfit', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #f5f7fb; color: #162033; text-align: center; }
+        .card { background: #ffffff; padding: 40px; border-radius: 24px; border: 1px solid #dce2ec; max-width: 400px; box-shadow: 0 12px 32px rgba(28,52,127,0.08); }
+        h1 { color: #3157d5; font-size: 28px; margin-bottom: 12px; }
         p { font-size: 16px; opacity: 0.8; margin-bottom: 24px; }
-        .btn { background: #03dac6; color: #000; padding: 12px 24px; border-radius: 12px; text-decoration: none; font-weight: bold; }
+        .btn { background: #3157d5; color: #ffffff; padding: 12px 24px; border-radius: 12px; text-decoration: none; font-weight: bold; }
       </style>
     </head>
     <body>

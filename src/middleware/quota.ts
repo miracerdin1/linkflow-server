@@ -4,7 +4,11 @@ import User from "../models/User";
 import Link from "../models/Link";
 import Folder from "../models/Folder";
 
-export const checkLinkQuota = async (req: AuthRequest, res: Response, next: NextFunction): Promise<any> => {
+export const checkLinkQuota = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<any> => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: "Yetkisiz erişim" });
@@ -18,7 +22,8 @@ export const checkLinkQuota = async (req: AuthRequest, res: Response, next: Next
       return res.status(402).json({
         error: "Link limitine ulaştınız",
         code: "QUOTA_EXCEEDED",
-        message: "Ücretsiz planda en fazla 30 adet link kaydedebilirsiniz. Sınırsız link kaydetmek için Pro plana geçin!"
+        message:
+          "Ücretsiz planda en fazla 30 adet link kaydedebilirsiniz. Sınırsız link kaydetmek için Pro plana geçin!",
       });
     }
     next();
@@ -28,7 +33,11 @@ export const checkLinkQuota = async (req: AuthRequest, res: Response, next: Next
   }
 };
 
-export const checkFolderQuota = async (req: AuthRequest, res: Response, next: NextFunction): Promise<any> => {
+export const checkFolderQuota = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<any> => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: "Yetkisiz erişim" });
@@ -42,7 +51,8 @@ export const checkFolderQuota = async (req: AuthRequest, res: Response, next: Ne
       return res.status(402).json({
         error: "Klasör limitine ulaştınız",
         code: "QUOTA_EXCEEDED",
-        message: "Ücretsiz planda en fazla 3 adet klasör oluşturabilirsiniz. Sınırsız klasör için Pro plana geçin!"
+        message:
+          "Ücretsiz planda en fazla 3 adet klasör oluşturabilirsiniz. Sınırsız klasör için Pro plana geçin!",
       });
     }
     next();
@@ -52,7 +62,11 @@ export const checkFolderQuota = async (req: AuthRequest, res: Response, next: Ne
   }
 };
 
-export const checkCollaboratorQuota = async (req: AuthRequest, res: Response, next: NextFunction): Promise<any> => {
+export const checkCollaboratorQuota = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<any> => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ error: "Yetkisiz erişim" });
@@ -64,7 +78,8 @@ export const checkCollaboratorQuota = async (req: AuthRequest, res: Response, ne
     return res.status(402).json({
       error: "Pro Plana Özel Özellik",
       code: "COLLABORATION_DISABLED",
-      message: "Klasörlere ortak çalışan ekleme özelliği yalnızca Pro plan üyelerine özeldir. Pro plana yükselterek ortak klasörler oluşturun!"
+      message:
+        "Klasörlere ortak çalışan ekleme özelliği yalnızca Pro plan üyelerine özeldir. Pro plana yükselterek ortak klasörler oluşturun!",
     });
   } catch (error) {
     console.error("Collaborator quota check error:", error);
