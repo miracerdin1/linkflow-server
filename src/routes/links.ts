@@ -23,6 +23,12 @@ const checkBrokenLimiter = rateLimit({
   message: { error: "Çok fazla bozuk link kontrolü istendi. Lütfen daha sonra tekrar deneyin." },
 });
 
+const duplicateCheckLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: { error: "Çok fazla kopya kontrolü istendi. Lütfen daha sonra tekrar deneyin." },
+});
+
 // GET /api/links - Get links based on authorization and optional folderId
 router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
@@ -38,7 +44,7 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Prom
       if (folderId === "null" || folderId === "none") {
         // Fetch uncategorized links (only owned by this user)
         const links = await Link.find({ folderId: null, owner: userId })
-          .populate("owner", "username email")
+          .populate("owner", "username")
           .sort({ createdAt: -1 });
         return res.json(links);
       } else {
@@ -57,7 +63,7 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Prom
         }
 
         const links = await Link.find({ folderId })
-          .populate("owner", "username email")
+          .populate("owner", "username")
           .sort({ createdAt: -1 });
         return res.json(links);
       }
@@ -78,7 +84,7 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Prom
         { folderId: { $in: accessibleFolderIds } }
       ]
     })
-    .populate("owner", "username email")
+    .populate("owner", "username")
     .sort({ createdAt: -1 });
 
     res.json(links);
@@ -87,16 +93,22 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Prom
   }
 });
 
-// GET /api/links/check-duplicate?url=... - Non-blocking check before saving a link
-router.get("/check-duplicate", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
+// POST /api/links/check-duplicate - Non-blocking check before saving a link
+router.post("/check-duplicate", authenticateToken, duplicateCheckLimiter, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
-    const rawUrl = req.query.url;
+    const rawUrl = req.body?.url;
     if (typeof rawUrl !== "string" || !rawUrl.trim()) {
-      return res.status(400).json({ error: "URL parametresi zorunludur" });
+      return res.status(400).json({ error: "URL zorunludur" });
     }
 
     const userId = req.user?.id;
-    const normalizedTarget = normalizeUrlForCompare(rawUrl);
+    let normalizedTarget: string | null;
+    try {
+      normalizedTarget = normalizeUrlForCompare(getSafeExternalUrl(rawUrl).href);
+    } catch {
+      return res.status(400).json({ error: "Geçerli bir HTTP veya HTTPS URL girin" });
+    }
+
     if (!normalizedTarget) {
       return res.json({ duplicate: false });
     }
@@ -151,7 +163,7 @@ router.post("/check-broken", authenticateToken, checkBrokenLimiter, async (req: 
     );
     const brokenCount = results.filter((reachable) => !reachable).length;
 
-    await Link.populate(links, { path: "owner", select: "username email" });
+    await Link.populate(links, { path: "owner", select: "username" });
 
     res.json({
       checked: links.length,
@@ -211,7 +223,7 @@ router.post("/", authenticateToken, checkLinkQuota, async (req: AuthRequest, res
 
     await newLink.save();
     
-    const populatedLink = await Link.findById(newLink._id).populate("owner", "username email");
+    const populatedLink = await Link.findById(newLink._id).populate("owner", "username");
 
     // WebSocket Notify
     if (folderId) {
@@ -310,7 +322,7 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
 
     await link.save();
     
-    const populatedLink = await Link.findById(link._id).populate("owner", "username email");
+    const populatedLink = await Link.findById(link._id).populate("owner", "username");
 
     // Handle real-time WebSockets
     const io = getIo(req);
