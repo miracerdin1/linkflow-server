@@ -12,6 +12,8 @@ export interface ILink extends Document {
   isPublic: boolean;
   owner?: mongoose.Types.ObjectId;
   createdAt: Date;
+  isBroken?: boolean;
+  lastCheckedAt?: Date;
 }
 
 const LinkSchema: Schema = new Schema({
@@ -30,6 +32,8 @@ const LinkSchema: Schema = new Schema({
   isPublic: { type: Boolean, default: false },
   owner: { type: Schema.Types.ObjectId, ref: "User", default: null, index: true },
   createdAt: { type: Date, default: Date.now },
+  isBroken: { type: Boolean, default: false },
+  lastCheckedAt: { type: Date },
 });
 
 export default mongoose.model<ILink>("Link", LinkSchema);
