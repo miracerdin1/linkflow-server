@@ -3,6 +3,8 @@ import Folder from "../models/Folder";
 import Link from "../models/Link";
 import User from "../models/User";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
+import { checkFolderQuota, checkCollaboratorQuota } from "../middleware/quota";
+import { isHexColor } from "../utils/validation";
 
 const router = express.Router();
 
@@ -29,12 +31,16 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Prom
 });
 
 // POST /api/folders - Create a new folder
-router.post("/", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
+router.post("/", authenticateToken, checkFolderQuota, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
     const { name, icon, color, isPublic } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: "Klasör adı zorunludur" });
+    }
+
+    if (!isHexColor(color)) {
+      return res.status(400).json({ error: "Gecersiz klasor rengi" });
     }
 
     const newFolder = new Folder({
@@ -67,6 +73,10 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
     const folder = await Folder.findById(id);
     if (!folder) {
       return res.status(404).json({ error: "Klasör bulunamadı" });
+    }
+
+    if (!isHexColor(color)) {
+      return res.status(400).json({ error: "Gecersiz klasor rengi" });
     }
 
     // Check ownership
@@ -130,7 +140,7 @@ router.delete("/:id", authenticateToken, async (req: AuthRequest, res: Response)
 });
 
 // POST /api/folders/:id/collaborators - Add a collaborator (Only owner can add)
-router.post("/:id/collaborators", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
+router.post("/:id/collaborators", authenticateToken, checkCollaboratorQuota, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
     const { id } = req.params;
     const { usernameOrEmail } = req.body;

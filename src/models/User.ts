@@ -5,6 +5,11 @@ export interface IUser extends Document {
   email: string;
   passwordHash: string;
   createdAt: Date;
+  plan: "free" | "pro";
+  role: "user" | "admin";
+  subscriptionId?: string | null;
+  subscriptionStatus?: "active" | "canceled" | "past_due" | "none";
+  subscriptionExpiresAt?: Date | null;
 }
 
 const UserSchema: Schema = new Schema({
@@ -25,6 +30,29 @@ const UserSchema: Schema = new Schema({
   passwordHash: {
     type: String,
     required: true,
+  },
+  plan: {
+    type: String,
+    enum: ["free", "pro"],
+    default: "free",
+  },
+  role: {
+    type: String,
+    enum: ["user", "admin"],
+    default: "user",
+  },
+  subscriptionId: {
+    type: String,
+    default: null,
+  },
+  subscriptionStatus: {
+    type: String,
+    enum: ["active", "canceled", "past_due", "none"],
+    default: "none",
+  },
+  subscriptionExpiresAt: {
+    type: Date,
+    default: null,
   },
   createdAt: {
     type: Date,

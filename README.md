@@ -9,11 +9,11 @@ LinkFlow API Server is a fast, robust, and real-time backend powered by **Expres
 - **🔐 Robust Auth & Migration Logic**: JWT-based session security. Upon the first administrator registration, the server automatically scans and migrates any orphaned or guest collections/links to prevent data loss.
 - **📁 Collaborative Rooms**: Powered by Socket.io, users join dedicated real-time room splits (`folder_{id}`) to collaborate instantly inside shared collections.
 - **🏷️ Automated URL Scraping Microservice**: A metadata parser using `axios` and `cheerio` that scrapes OpenGraph and Twitter cards (title, description, dynamic thumbnail) when a user pastes a URL, auto-categorizing it (*Video, Article, Product, Social, Other*).
-- **🎨 SSR Public Bio Profiles (`/bio/:username`)**: Renders beautifully optimized, responsive bio links pages directly in vanilla HTML, featuring 4 HSL palette presets:
-  - `purple-dark`: Space and ultraviolet premium dark mode.
-  - `sunset`: Vibrant orange/red warmth.
-  - `nordic-light`: Minimalist, clean grey/sky-blue light theme.
-  - `glassmorphic`: Frosted, glossy glass panel interfaces with floating shadows.
+- **🎨 SSR Public Bio Profiles (`/bio/:username`)**: Renders responsive bio pages with four light, app-synchronized palettes:
+  - `purple-dark`: Kobalt — clean blue and neutral surfaces.
+  - `sunset`: Mercan — warm coral highlights.
+  - `nordic-light`: Adaçayı — calm green neutrals.
+  - `glassmorphic`: Lavanta — soft violet accents.
 - **🏗️ tsx Execution Layer**: Modern TypeScript runner using `tsx` for sub-second hot restarts and Zero-Compile development workflow.
 
 ---
