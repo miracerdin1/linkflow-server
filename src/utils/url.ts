@@ -1,9 +1,14 @@
 import net from "net";
 
 const HTTP_PROTOCOLS = new Set(["http:", "https:"]);
+const MAX_URL_LENGTH = 2048;
 
 const normalizeUrlInput = (url: string) => {
   const trimmedUrl = url.trim();
+
+  if (!trimmedUrl || trimmedUrl.length > MAX_URL_LENGTH) {
+    throw new Error("URL must be between 1 and 2048 characters.");
+  }
 
   if (/^https?:\/\//i.test(trimmedUrl)) return trimmedUrl;
 
