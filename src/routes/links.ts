@@ -1,19 +1,38 @@
 import express, { Response } from "express";
+import rateLimit from "express-rate-limit";
 import Link from "../models/Link";
 import Folder from "../models/Folder";
 import { scrapeMetadata } from "../services/scraper";
+import { isLinkReachable } from "../services/linkChecker";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
+import { checkLinkQuota } from "../middleware/quota";
+import { getSafeExternalUrl } from "../utils/url";
+import { normalizeUrlForCompare } from "../utils/normalizeUrl";
 
 const router = express.Router();
 
 // Helper to get io instance
 const getIo = (req: any) => req.app.get("io");
 
+// check-broken makes real outbound HTTP requests per saved link, so without a
+// limit an authenticated caller could repeatedly trigger it to hammer any
+// host they've saved a link to.
+const checkBrokenLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: "Çok fazla bozuk link kontrolü istendi. Lütfen daha sonra tekrar deneyin." },
+});
+
 // GET /api/links - Get links based on authorization and optional folderId
 router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
-    const { folderId } = req.query;
+    const rawFolderId = req.query.folderId;
+    const folderId = typeof rawFolderId === "string" ? rawFolderId : undefined;
     const userId = req.user?.id;
+
+    if (rawFolderId && !folderId) {
+      return res.status(400).json({ error: "Gecersiz klasor parametresi" });
+    }
 
     if (folderId) {
       if (folderId === "null" || folderId === "none") {
@@ -68,14 +87,98 @@ router.get("/", authenticateToken, async (req: AuthRequest, res: Response): Prom
   }
 });
 
+// GET /api/links/check-duplicate?url=... - Non-blocking check before saving a link
+router.get("/check-duplicate", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
+  try {
+    const rawUrl = req.query.url;
+    if (typeof rawUrl !== "string" || !rawUrl.trim()) {
+      return res.status(400).json({ error: "URL parametresi zorunludur" });
+    }
+
+    const userId = req.user?.id;
+    const normalizedTarget = normalizeUrlForCompare(rawUrl);
+    if (!normalizedTarget) {
+      return res.json({ duplicate: false });
+    }
+
+    const existingLinks = await Link.find({ owner: userId }).select("url title imageUrl folderId createdAt");
+    const match = existingLinks.find((l) => normalizeUrlForCompare(l.url) === normalizedTarget);
+
+    if (!match) {
+      return res.json({ duplicate: false });
+    }
+
+    res.json({
+      duplicate: true,
+      link: {
+        _id: match._id,
+        title: match.title,
+        url: match.url,
+        imageUrl: match.imageUrl,
+        folderId: match.folderId,
+        createdAt: match.createdAt,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Kopya kontrolü yapılamadı" });
+  }
+});
+
+// POST /api/links/check-broken - Bulk-check the caller's own links for reachability
+router.post("/check-broken", authenticateToken, checkBrokenLimiter, async (req: AuthRequest, res: Response): Promise<any> => {
+  try {
+    const userId = req.user?.id;
+    const MAX_CHECK = 60;
+
+    // Links never checked (lastCheckedAt absent) sort first in ascending order,
+    // so a user with more than MAX_CHECK links still gets full coverage over
+    // repeated taps instead of only ever checking the same first page.
+    const links = await Link.find({ owner: userId })
+      .sort({ lastCheckedAt: 1 })
+      .limit(MAX_CHECK);
+
+    // Each check is capped at ~12s in isLinkReachable and this route is
+    // itself rate-limited, so running the whole (small) batch in parallel
+    // keeps the worst case around one check's duration instead of stacking.
+    const results = await Promise.all(
+      links.map(async (link) => {
+        const reachable = await isLinkReachable(link.url);
+        link.isBroken = !reachable;
+        link.lastCheckedAt = new Date();
+        await link.save();
+        return reachable;
+      }),
+    );
+    const brokenCount = results.filter((reachable) => !reachable).length;
+
+    await Link.populate(links, { path: "owner", select: "username email" });
+
+    res.json({
+      checked: links.length,
+      brokenCount,
+      links,
+    });
+  } catch (error) {
+    console.error("Error checking broken links:", error);
+    res.status(500).json({ error: "Bozuk link kontrolü yapılamadı" });
+  }
+});
+
 // POST /api/links - Add a new link
-router.post("/", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
+router.post("/", authenticateToken, checkLinkQuota, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
     const { url, folderId, isPublic } = req.body;
     const userId = req.user?.id;
 
     if (!url) {
       return res.status(400).json({ error: "URL adresi zorunludur" });
+    }
+
+    let safeUrl: string;
+    try {
+      safeUrl = getSafeExternalUrl(String(url)).href;
+    } catch (error) {
+      return res.status(400).json({ error: "Lutfen gecerli bir HTTP veya HTTPS URL girin" });
     }
 
     // If folderId is provided, verify folder write access
@@ -95,11 +198,11 @@ router.post("/", authenticateToken, async (req: AuthRequest, res: Response): Pro
     }
 
     // 1. Scrape Metadata
-    const metadata = await scrapeMetadata(url);
+    const metadata = await scrapeMetadata(safeUrl);
 
     // 2. Create Link Record
     const newLink = new Link({
-      url,
+      url: safeUrl,
       ...metadata,
       folderId: folderId || null,
       isPublic: isPublic || false,
@@ -150,7 +253,8 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
 
     const isLinkOwner = link.owner && link.owner.toString() === userId;
 
-    // Fix IDOR: If there is no folder, ONLY the owner can edit it.
+    // Fix IDOR: Only link owner or collaborators can edit title/url.
+    // If moving folders, only the link owner can do that (checked below).
     if (!link.folderId) {
       if (!isLinkOwner) {
         return res.status(403).json({ error: "Bu bağlantıyı düzenlemek için yetkiniz yok" });
@@ -167,16 +271,26 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
 
     if (folderId !== undefined) {
       newFolderId = (folderId === "null" || folderId === "") ? null : folderId;
-      if (newFolderId && newFolderId.toString() !== (oldFolderId ? oldFolderId.toString() : "")) {
-        const newFolder = await Folder.findById(newFolderId);
-        if (!newFolder) {
-          return res.status(404).json({ error: "Hedef klasör bulunamadı" });
+      const oldStr = oldFolderId ? oldFolderId.toString() : "";
+      const newStr = newFolderId ? newFolderId.toString() : "";
+      
+      if (newStr !== oldStr) {
+        // Only the link owner can change the folder
+        if (!isLinkOwner) {
+          return res.status(403).json({ error: "Sadece link sahibi linkin klasörünü değiştirebilir" });
         }
-        const hasNewFolderAccess =
-          (newFolder.owner && newFolder.owner.toString() === userId) ||
-          newFolder.collaborators.some((cId) => cId.toString() === userId);
-        if (!hasNewFolderAccess) {
-          return res.status(403).json({ error: "Hedef klasöre taşımak için yetkiniz yok" });
+
+        if (newFolderId) {
+          const newFolder = await Folder.findById(newFolderId);
+          if (!newFolder) {
+            return res.status(404).json({ error: "Hedef klasör bulunamadı" });
+          }
+          const hasNewFolderAccess =
+            (newFolder.owner && newFolder.owner.toString() === userId) ||
+            newFolder.collaborators.some((cId) => cId.toString() === userId);
+          if (!hasNewFolderAccess) {
+            return res.status(403).json({ error: "Hedef klasöre taşımak için yetkiniz yok" });
+          }
         }
       }
     }
@@ -184,7 +298,13 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
     // Update fields
     link.title = title !== undefined ? title : link.title;
     link.description = description !== undefined ? description : link.description;
-    link.url = url !== undefined ? url : link.url;
+    if (url !== undefined) {
+      try {
+        link.url = getSafeExternalUrl(String(url)).href;
+      } catch (error) {
+        return res.status(400).json({ error: "Lutfen gecerli bir HTTP veya HTTPS URL girin" });
+      }
+    }
     link.folderId = newFolderId as any;
     link.isPublic = isPublic !== undefined ? isPublic : link.isPublic;
 
@@ -230,27 +350,19 @@ router.delete("/:id", authenticateToken, async (req: AuthRequest, res: Response)
     }
 
     // Check write authorization
-    let folderAccess = false; // DEFAULT TO FALSE
+    let isFolderOwner = false;
     if (link.folderId) {
       const folder = await Folder.findById(link.folderId);
       if (folder) {
-        folderAccess =
-          (folder.owner && folder.owner.toString() === userId) ||
-          folder.collaborators.some((cId) => cId.toString() === userId);
+        isFolderOwner = !!(folder.owner && folder.owner.toString() === userId);
       }
     }
 
-    const isLinkOwner = link.owner && link.owner.toString() === userId;
+    const isLinkOwner = !!(link.owner && link.owner.toString() === userId);
 
-    // Fix IDOR: If there is no folder, ONLY the owner can delete it.
-    if (!link.folderId) {
-      if (!isLinkOwner) {
-        return res.status(403).json({ error: "Bu bağlantıyı silmek için yetkiniz yok" });
-      }
-    } else {
-      if (!isLinkOwner && !folderAccess) {
-         return res.status(403).json({ error: "Bu bağlantıyı silmek için yetkiniz yok" });
-      }
+    // Fix IDOR: Only the link owner OR the folder owner can delete the link.
+    if (!isLinkOwner && !isFolderOwner) {
+      return res.status(403).json({ error: "Bu bağlantıyı silmek için yetkiniz yok" });
     }
 
     await Link.findByIdAndDelete(id);

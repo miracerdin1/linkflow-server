@@ -15,8 +15,8 @@ const FolderSchema: Schema = new Schema({
   icon: { type: String, default: "folder" },
   color: { type: String, default: "#6200ee" },
   isPublic: { type: Boolean, default: false },
-  owner: { type: Schema.Types.ObjectId, ref: "User", default: null },
-  collaborators: [{ type: Schema.Types.ObjectId, ref: "User", default: [] }],
+  owner: { type: Schema.Types.ObjectId, ref: "User", default: null, index: true },
+  collaborators: [{ type: Schema.Types.ObjectId, ref: "User", default: [], index: true }],
   createdAt: { type: Date, default: Date.now },
 });
 

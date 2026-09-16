@@ -1,9 +1,11 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
-import dns from "dns";
-import { promisify } from "util";
+import { getSafeExternalUrl, isSafeExternalUrl } from "../utils/url";
+import { assertPublicHostname, createSafeLookup } from "../utils/safeFetch";
 
-const lookupAsync = promisify(dns.lookup);
+const MAX_METADATA_BYTES = 1024 * 1024;
+const MAX_REDIRECTS = 5;
+const OVERALL_TIMEOUT_MS = 5000;
 
 interface ScrapedMetadata {
   title?: string;
@@ -13,126 +15,106 @@ interface ScrapedMetadata {
   category: "Video" | "Article" | "Product" | "Social" | "Other";
 }
 
-// Check if an IP address is private/internal
-const isPrivateIP = (ip: string) => {
-  const parts = ip.split('.').map(Number);
-  if (parts.length !== 4) return false;
-  return (
-    parts[0] === 10 ||
-    (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) ||
-    (parts[0] === 192 && parts[1] === 168) ||
-    parts[0] === 127 ||
-    ip === "169.254.169.254" || // AWS / Cloud metadata
-    ip === "0.0.0.0"
-  );
+// Redirects are followed manually (not via axios's maxRedirects) so every
+// hop gets the same SSRF validation (public-hostname check + pinned DNS
+// lookup) as the original URL, instead of trusting wherever a 3xx points.
+// All hops share one overall deadline (rather than a fresh timeout each),
+// so a slow redirect chain can't block the caller far longer than a single
+// request would have.
+const fetchWithSafeRedirects = async (
+  url: string,
+  deadline: number = Date.now() + OVERALL_TIMEOUT_MS,
+  redirectsLeft = MAX_REDIRECTS,
+): Promise<{ data: unknown; finalUrl: URL }> => {
+  const remainingMs = deadline - Date.now();
+  if (remainingMs <= 0) throw new Error("Metadata fetch timed out.");
+
+  const parsedUrl = getSafeExternalUrl(url);
+  const safeAddresses = await assertPublicHostname(parsedUrl.hostname);
+
+  const response = await axios.get(parsedUrl.href, {
+    headers: {
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+    },
+    timeout: remainingMs,
+    maxRedirects: 0,
+    maxContentLength: MAX_METADATA_BYTES,
+    maxBodyLength: MAX_METADATA_BYTES,
+    lookup: createSafeLookup(safeAddresses),
+    validateStatus: (status: number) => (status >= 200 && status < 300) || (status >= 300 && status < 400),
+  } as any);
+
+  if (response.status >= 300 && response.status < 400) {
+    const location = response.headers.location;
+    if (!location) throw new Error("Redirect response is missing a Location header.");
+    if (redirectsLeft <= 0) throw new Error("Too many redirects.");
+
+    const nextUrl = new URL(location, parsedUrl.href).href;
+    return fetchWithSafeRedirects(nextUrl, deadline, redirectsLeft - 1);
+  }
+
+  return { data: response.data, finalUrl: parsedUrl };
 };
 
 export const scrapeMetadata = async (url: string): Promise<ScrapedMetadata> => {
   try {
-    const parsedUrl = new URL(url);
-    const hostname = parsedUrl.hostname;
+    const { data, finalUrl: parsedUrl } = await fetchWithSafeRedirects(url);
 
-    // Prevent direct localhost/internal access via DNS lookup
-    try {
-      const { address } = await lookupAsync(hostname);
-      if (isPrivateIP(address)) {
-        throw new Error("SSRF Attempt blocked: Cannot access internal networks.");
-      }
-    } catch (dnsError) {
-       console.warn(`DNS lookup failed or SSRF blocked for ${hostname}:`, dnsError);
-       throw dnsError; // Re-throw to bypass axios fetch
-    }
+    const $ = cheerio.load(data as any);
 
-    const { data } = await axios.get(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-      },
-      timeout: 5000, // Added timeout for safety
-      maxRedirects: 3,
-    });
-
-    const $ = cheerio.load(data);
-
-    // Helper to resolve relative URLs
     const resolveUrl = (relativeUrl?: string) => {
       if (!relativeUrl) return undefined;
+
       try {
-        return new URL(relativeUrl, url).href;
-      } catch (e) {
-        return relativeUrl;
+        const resolvedUrl = new URL(relativeUrl, parsedUrl.href).href;
+
+        if (!isSafeExternalUrl(resolvedUrl)) return undefined;
+
+        return resolvedUrl;
+      } catch (error) {
+        return undefined;
       }
     };
 
-    // Extract Title (OG > Twitter > Title Tag)
     const title =
       $('meta[property="og:title"]').attr("content") ||
       $('meta[name="twitter:title"]').attr("content") ||
       $("title").text();
 
-    // Extract Description (OG > Twitter > Meta Description)
     const description =
       $('meta[property="og:description"]').attr("content") ||
       $('meta[name="twitter:description"]').attr("content") ||
       $('meta[name="description"]').attr("content");
 
-    // Extract Image (OG > Twitter > Link Image > Favicon)
     let imageUrl =
       $('meta[property="og:image"]').attr("content") ||
       $('meta[name="twitter:image"]').attr("content") ||
       $('link[rel="image_src"]').attr("href");
 
-    // Fallback to Favicon if no image found
     if (!imageUrl) {
-      const favicon =
+      imageUrl =
         $('link[rel="apple-touch-icon"]').attr("href") ||
         $('link[rel="icon"]').attr("href") ||
         $('link[rel="shortcut icon"]').attr("href");
-
-      if (favicon) {
-        imageUrl = favicon;
-      }
     }
 
-    // Resolve relative URL for image
     imageUrl = resolveUrl(imageUrl);
-
     const siteName = $('meta[property="og:site_name"]').attr("content");
-
-    // Auto-Categorization Logic
     let category: ScrapedMetadata["category"] = "Other";
     const domain = parsedUrl.hostname.toLowerCase();
 
-    if (
-      domain.includes("youtube") ||
-      domain.includes("vimeo") ||
-      domain.includes("tiktok")
-    ) {
+    if (domain.includes("youtube") || domain.includes("vimeo") || domain.includes("tiktok")) {
       category = "Video";
-    } else if (
-      domain.includes("medium") ||
-      domain.includes("dev.to") ||
-      domain.includes("blog")
-    ) {
+    } else if (domain.includes("medium") || domain.includes("dev.to") || domain.includes("blog")) {
       category = "Article";
-    } else if (
-      domain.includes("amazon") ||
-      domain.includes("trendyol") ||
-      domain.includes("hepsiburada")
-    ) {
+    } else if (domain.includes("amazon") || domain.includes("trendyol") || domain.includes("hepsiburada")) {
       category = "Product";
-    } else if (
-      domain.includes("twitter") ||
-      domain.includes("x.com") ||
-      domain.includes("instagram") ||
-      domain.includes("linkedin")
-    ) {
+    } else if (domain.includes("twitter") || domain.includes("x.com") || domain.includes("instagram") || domain.includes("linkedin")) {
       category = "Social";
     }
 
-    console.log(
-      `[Scraper] URL: ${url} | Domain: ${domain} | Category: ${category}`,
-    );
+    console.log(`[Scraper] URL: ${parsedUrl.href} | Domain: ${domain} | Category: ${category}`);
 
     return {
       title: title?.trim(),
@@ -143,7 +125,6 @@ export const scrapeMetadata = async (url: string): Promise<ScrapedMetadata> => {
     };
   } catch (error) {
     console.error(`Error scraping ${url}:`, error);
-    // Fallback if scraping fails
     return {
       category: "Other",
     };
