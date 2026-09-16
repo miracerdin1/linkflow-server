@@ -71,7 +71,7 @@ const authLimiter = rateLimit({
 });
 
 app.use((req, res, next) => {
-  console.log(`[Incoming Request] ${req.method} ${req.url}`);
+  console.log(`[Incoming Request] ${req.method} ${req.path}`);
   next();
 });
 
