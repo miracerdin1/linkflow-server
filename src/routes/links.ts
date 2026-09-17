@@ -244,7 +244,7 @@ router.post("/", authenticateToken, checkLinkQuota, async (req: AuthRequest, res
 router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
   try {
     const { id } = req.params;
-    const { title, description, url, folderId, isPublic } = req.body;
+    const { title, description, url, folderId, isPublic, category } = req.body;
     const userId = req.user?.id;
 
     const link = await Link.findById(id);
@@ -319,6 +319,13 @@ router.put("/:id", authenticateToken, async (req: AuthRequest, res: Response): P
     }
     link.folderId = newFolderId as any;
     link.isPublic = isPublic !== undefined ? isPublic : link.isPublic;
+    if (category !== undefined) {
+      const allowed = (Link.schema.path("category") as any).enumValues as string[];
+      if (!allowed.includes(category)) {
+        return res.status(400).json({ error: "Geçersiz kategori" });
+      }
+      link.category = category;
+    }
 
     await link.save();
     
