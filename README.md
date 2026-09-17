@@ -98,7 +98,7 @@ Ensure you have **Node.js (version 18 or above)** and a **MongoDB** instance (lo
 Create a `.env` file in the root of the `server/` directory and populate it with your settings:
 
 ```env
-PORT=3001
+PORT=3000
 MONGO_URI=mongodb+srv://<username>:<password>@cluster.mongodb.net/linkflow
 JWT_SECRET=your-secure-dev-jwt-secret-key-string
 ```
@@ -115,9 +115,9 @@ To run in production mode:
 npm start
 ```
 
-Your server will be running at `http://localhost:3001`. You can test it by visiting:
-- Health check: `http://localhost:3001/`
-- Render check: `http://localhost:3001/bio/<registered_username>`
+Your server will be running at `http://localhost:3000`. You can test it by visiting:
+- Health check: `http://localhost:3000/`
+- Render check: `http://localhost:3000/bio/<registered_username>`
 
 ---
 
@@ -147,6 +147,11 @@ Navigate to the **Environment** tab in your Render service dashboard and add the
 Render Web Services support **Socket.io out of the box**! Since Socket.io is configured to allow CORS on the server (`origin: "*"`), the mobile application can connect directly to the main service URL.
 
 - **Production API URL**: `https://linkflow-server-uask.onrender.com`
+- **Live bio page example**: `https://linkflow-server-uask.onrender.com/bio/demo`
+- **Web client (PWA)**: `https://linkflow.expo.app`
+
+> [!NOTE]
+> The service runs on Render's free tier and spins down when idle — the first request after a pause can take 30–60 seconds.
 
 ---
 
