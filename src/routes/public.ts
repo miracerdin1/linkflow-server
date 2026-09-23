@@ -6,19 +6,10 @@ import Link from "../models/Link";
 import Profile from "../models/Profile";
 import { authenticateToken, AuthRequest } from "../middleware/auth";
 import { isSafeExternalUrl } from "../utils/url";
-import { isHexColor } from "../utils/validation";
+import { renderBioPage } from "../views/bioPage";
 
 const router = express.Router();
 const ALLOWED_PROFILE_THEMES = new Set(["purple-dark", "sunset", "nordic-light", "glassmorphic"]);
-const renderExternalUrl = (url: string) => isSafeExternalUrl(url) ? escapeHtml(url) : "#";
-const renderColor = (color?: string) => isHexColor(color) ? escapeHtml(color || "#6200ee") : "#6200ee";
-const renderHostname = (url: string) => {
-  try {
-    return new URL(url).hostname;
-  } catch (error) {
-    return "";
-  }
-};
 
 // GET /api/profile - Fetch the bio profile settings for the authenticated user
 router.get("/api/profile", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
@@ -128,363 +119,38 @@ router.get("/bio/:username", async (req: express.Request, res: Response): Promis
       ]
     }).sort({ createdAt: -1 });
 
-    // 5. Group links by Folder
-    const groupedLinks: { [key: string]: any[] } = {};
-    const uncategorizedLinks: any[] = [];
-
+    // 5. Group links by folder and render
+    const toBioLink = (link: any) => ({
+      url: link.url,
+      title: link.title,
+      description: link.description,
+      imageUrl: link.imageUrl,
+      siteName: link.siteName,
+    });
+    const byFolder = new Map<string, any[]>();
+    const looseLinks: any[] = [];
     publicLinks.forEach((link) => {
-      if (link.folderId) {
-        const folderIdStr = link.folderId.toString();
-        if (groupedLinks[folderIdStr]) {
-          groupedLinks[folderIdStr].push(link);
-        } else {
-          groupedLinks[folderIdStr] = [link];
-        }
-      } else {
-        uncategorizedLinks.push(link);
-      }
+      if (!link.folderId) return looseLinks.push(link);
+      const key = link.folderId.toString();
+      byFolder.set(key, [...(byFolder.get(key) ?? []), link]);
     });
 
-    // 6. Select Theme styles
-    let themeStyles = "";
-    let backgroundGradient = "";
-
-    switch (profile.theme) {
-      case "sunset":
-        backgroundGradient = "linear-gradient(135deg, #fff7f3 0%, #ffe9df 100%)";
-        themeStyles = `
-          body { color: #2a1c18; }
-          .profile-container { background: rgba(255, 255, 255, 0.78); border: 1px solid #ead8d0; }
-          .link-card { background: #ffffff; color: #2a1c18; border: 1px solid #ead8d0; }
-          .link-card:hover { transform: translateY(-3px); border-color: #d95d39; box-shadow: 0 10px 24px rgba(88, 45, 31, 0.1); }
-          .folder-header { color: #7a2d19; background: #ffe2d8; border: 1px solid #ead8d0; }
-        `;
-        break;
-      case "nordic-light":
-        backgroundGradient = "linear-gradient(135deg, #f4f7f4 0%, #e4eee8 100%)";
-        themeStyles = `
-          body { color: #17251f; }
-          .profile-container { background: rgba(255, 255, 255, 0.8); border: 1px solid #d5e1da; }
-          .link-card { background: #ffffff; color: #17251f; border: 1px solid #d5e1da; }
-          .link-card:hover { transform: translateY(-3px); border-color: #34715a; box-shadow: 0 10px 24px rgba(31, 74, 56, 0.1); }
-          .folder-header { color: #1b4636; background: #dcebe4; border: 1px solid #d5e1da; }
-        `;
-        break;
-      case "glassmorphic":
-        backgroundGradient = "linear-gradient(135deg, #f8f6fc 0%, #eee9f8 100%)";
-        themeStyles = `
-          body { color: #211a2d; }
-          .profile-container { background: rgba(255, 255, 255, 0.8); border: 1px solid #e1daeb; backdrop-filter: blur(18px); }
-          .link-card { background: #ffffff; color: #211a2d; border: 1px solid #e1daeb; }
-          .link-card:hover { transform: translateY(-3px); border-color: #6d52b5; box-shadow: 0 10px 24px rgba(63, 45, 118, 0.1); }
-          .folder-header { color: #3f2d76; background: #eae3fa; border: 1px solid #e1daeb; }
-        `;
-        break;
-      case "purple-dark":
-      default:
-        backgroundGradient = "linear-gradient(135deg, #f5f7fb 0%, #e8edfa 100%)";
-        themeStyles = `
-          body { color: #162033; }
-          .profile-container { background: rgba(255, 255, 255, 0.82); border: 1px solid #dce2ec; }
-          .link-card { background: #ffffff; color: #162033; border: 1px solid #dce2ec; }
-          .link-card:hover { transform: translateY(-3px); border-color: #3157d5; box-shadow: 0 10px 24px rgba(28, 52, 127, 0.1); }
-          .folder-header { color: #1c347f; background: #e1e8ff; border: 1px solid #dce2ec; }
-        `;
-        break;
-    }
-
-    // Default Avatar SVG if none provided
-    const avatarImg = profile.avatarUrl && isSafeExternalUrl(profile.avatarUrl)
-      ? `<img src="${escapeHtml(profile.avatarUrl)}" class="profile-avatar" alt="${escapeHtml(profile.name)}">`
-      : `<div class="profile-avatar-fallback">${escapeHtml(profile.name.charAt(0).toUpperCase())}</div>`;
-
-    // Render public links HTML
-    let linksHtml = "";
-
-    // A. Render links grouped by Folder
-    publicFolders.forEach((folder) => {
-      const folderLinks = groupedLinks[folder._id.toString()] || [];
-      if (folderLinks.length > 0) {
-        linksHtml += `
-          <div class="folder-section">
-            <div class="folder-header" style="border-left: 5px solid ${renderColor(folder.color)}">
-              <span>${escapeHtml(folder.name)}</span>
-            </div>
-            <div class="links-grid">
-        `;
-
-        folderLinks.forEach((link) => {
-          linksHtml += `
-            <a href="${renderExternalUrl(link.url)}" target="_blank" rel="noopener noreferrer" class="link-card">
-              ${isSafeExternalUrl(link.imageUrl) ? `<img src="${escapeHtml(link.imageUrl)}" class="link-image" alt="${escapeHtml(link.title || '')}">` : ""}
-              <div class="link-info">
-                <div class="link-title">${escapeHtml(link.title || link.url)}</div>
-                ${link.description ? `<div class="link-desc">${escapeHtml(link.description)}</div>` : ""}
-                <span class="link-domain">${escapeHtml(link.siteName || renderHostname(link.url))}</span>
-              </div>
-            </a>
-          `;
-        });
-
-        linksHtml += `
-            </div>
-          </div>
-        `;
-      }
-    });
-
-    // B. Render Uncategorized Public Links
-    if (uncategorizedLinks.length > 0) {
-      linksHtml += `
-        <div class="folder-section">
-          <div class="folder-header" style="border-left: 5px solid #666">
-            <span>Genel Bağlantılar</span>
-          </div>
-          <div class="links-grid">
-      `;
-
-      uncategorizedLinks.forEach((link) => {
-        linksHtml += `
-          <a href="${renderExternalUrl(link.url)}" target="_blank" rel="noopener noreferrer" class="link-card">
-            ${isSafeExternalUrl(link.imageUrl) ? `<img src="${escapeHtml(link.imageUrl)}" class="link-image" alt="${escapeHtml(link.title || '')}">` : ""}
-            <div class="link-info">
-              <div class="link-title">${escapeHtml(link.title || link.url)}</div>
-              ${link.description ? `<div class="link-desc">${escapeHtml(link.description)}</div>` : ""}
-              <span class="link-domain">${escapeHtml(link.siteName || renderHostname(link.url))}</span>
-            </div>
-          </a>
-        `;
-      });
-
-      linksHtml += `
-          </div>
-        </div>
-      `;
-    }
-
-    if (linksHtml === "") {
-      linksHtml = `
-        <div class="empty-state">
-          <p>Henüz herkese açık bağlantı eklenmemiş.</p>
-        </div>
-      `;
-    }
-
-    // Compose HTML template
-    const html = `
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(profile.name)} (@${escapeHtml(user.username)}) - Bio LinkFlow</title>
-  <meta name="description" content="${escapeHtml(profile.bio)}">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Outfit', sans-serif;
-      min-height: 100vh;
-      background: ${backgroundGradient};
-      background-attachment: fixed;
-      display: flex;
-      justify-content: center;
-      padding: 40px 20px;
-      line-height: 1.5;
-    }
-    
-    .profile-container {
-      width: 100%;
-      max-width: 680px;
-      border-radius: 24px;
-      padding: 32px 24px;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-    }
-    
-    /* Header Section */
-    .profile-header {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      text-align: center;
-      margin-bottom: 32px;
-      width: 100%;
-    }
-    .profile-avatar {
-      width: 96px;
-      height: 96px;
-      border-radius: 50%;
-      object-fit: cover;
-      border: 3px solid rgba(255, 255, 255, 0.8);
-      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
-      margin-bottom: 16px;
-    }
-    .profile-avatar-fallback {
-      width: 96px;
-      height: 96px;
-      border-radius: 50%;
-      background: linear-gradient(135deg, #6200ee 0%, #e91e63 100%);
-      color: white;
-      font-size: 36px;
-      font-weight: 800;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border: 3px solid rgba(255, 255, 255, 0.8);
-      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
-      margin-bottom: 16px;
-    }
-    .profile-name {
-      font-size: 24px;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      margin-bottom: 6px;
-    }
-    .profile-username {
-      font-size: 13px;
-      font-weight: bold;
-      opacity: 0.7;
-      margin-top: -4px;
-      margin-bottom: 8px;
-      letter-spacing: 0.5px;
-      background: rgba(255,255,255,0.1);
-      padding: 2px 10px;
-      border-radius: 20px;
-      border: 1px solid rgba(255,255,255,0.1);
-    }
-    .profile-bio {
-      font-size: 15px;
-      opacity: 0.85;
-      font-weight: 400;
-      max-width: 480px;
-    }
-    
-    /* Content Layout */
-    .folder-section {
-      width: 100%;
-      margin-bottom: 28px;
-    }
-    .folder-header {
-      font-size: 16px;
-      font-weight: 800;
-      padding: 8px 16px;
-      border-radius: 12px;
-      margin-bottom: 12px;
-      display: flex;
-      align-items: center;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    .links-grid {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .link-card {
-      display: flex;
-      text-decoration: none;
-      border-radius: 16px;
-      overflow: hidden;
-      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-      cursor: pointer;
-    }
-    .link-image {
-      width: 80px;
-      height: 80px;
-      object-fit: cover;
-      background-color: rgba(255,255,255,0.1);
-      border-right: 1px solid rgba(0, 0, 0, 0.05);
-    }
-    .link-info {
-      flex: 1;
-      padding: 12px 16px;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      min-width: 0;
-    }
-    .link-title {
-      font-size: 15px;
-      font-weight: 600;
-      margin-bottom: 3px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .link-desc {
-      font-size: 12px;
-      opacity: 0.75;
-      margin-bottom: 4px;
-      display: -webkit-box;
-      -webkit-line-clamp: 1;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .link-domain {
-      font-size: 10px;
-      font-weight: 800;
-      text-transform: uppercase;
-      opacity: 0.5;
-      letter-spacing: 0.5px;
-    }
-    
-    .empty-state {
-      padding: 40px;
-      text-align: center;
-      opacity: 0.7;
-    }
-    
-    /* Footer */
-    .profile-footer {
-      margin-top: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      opacity: 0.6;
-      font-size: 11px;
-      letter-spacing: 0.5px;
-      transition: opacity 0.2s;
-    }
-    .profile-footer:hover {
-      opacity: 0.9;
-    }
-    .profile-footer a {
-      color: inherit;
-      text-decoration: none;
-      font-weight: 800;
-      margin-left: 4px;
-    }
-    
-    /* Custom Theme injected */
-    ${themeStyles}
-  </style>
-</head>
-<body>
-  <div class="profile-container">
-    <div class="profile-header">
-      ${avatarImg}
-      <h1 class="profile-name">${escapeHtml(profile.name)}</h1>
-      <div class="profile-username">@${escapeHtml(user.username)}</div>
-      <p class="profile-bio">${escapeHtml(profile.bio)}</p>
-    </div>
-    
-    ${linksHtml}
-    
-    <div class="profile-footer">
-      <span>Powered by</span>
-      <a href="https://github.com/miracerdin1/mobile" target="_blank" rel="noopener noreferrer">LinkFlow</a>
-    </div>
-  </div>
-</body>
-</html>
-    `;
-
-    res.send(html);
+    res.send(
+      renderBioPage({
+        name: profile.name,
+        username: user.username,
+        bio: profile.bio,
+        avatarUrl: profile.avatarUrl,
+        theme: profile.theme,
+        folders: publicFolders.map((folder) => ({
+          name: folder.name,
+          color: folder.color,
+          links: (byFolder.get(folder._id.toString()) ?? []).map(toBioLink),
+        })),
+        looseLinks: looseLinks.map(toBioLink),
+        recent: publicLinks.map(toBioLink),
+      }),
+    );
   } catch (error) {
     console.error("Bio page render error:", error);
     res.status(500).send("Bio sayfası yüklenirken bir hata oluştu.");

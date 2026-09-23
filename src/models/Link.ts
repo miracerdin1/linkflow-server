@@ -14,6 +14,10 @@ export interface ILink extends Document {
   createdAt: Date;
   isBroken?: boolean;
   lastCheckedAt?: Date;
+  /** Last time the owner opened the link from the app. */
+  openedAt?: Date;
+  /** When the owner said "no longer needed" in the forgotten-links wheel. */
+  dismissedAt?: Date;
 }
 
 const LinkSchema: Schema = new Schema({
@@ -34,6 +38,8 @@ const LinkSchema: Schema = new Schema({
   createdAt: { type: Date, default: Date.now },
   isBroken: { type: Boolean, default: false },
   lastCheckedAt: { type: Date },
+  openedAt: { type: Date },
+  dismissedAt: { type: Date },
 });
 
 export default mongoose.model<ILink>("Link", LinkSchema);
