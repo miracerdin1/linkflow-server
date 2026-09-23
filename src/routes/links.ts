@@ -1,4 +1,5 @@
 import express, { Response } from "express";
+import mongoose from "mongoose";
 import rateLimit from "express-rate-limit";
 import Link from "../models/Link";
 import Folder from "../models/Folder";
@@ -237,6 +238,39 @@ router.post("/", authenticateToken, checkLinkQuota, async (req: AuthRequest, res
   } catch (error) {
     console.error("Error adding link:", error);
     res.status(500).json({ error: "Bağlantı işlenirken bir hata oluştu" });
+  }
+});
+
+// POST /api/links/:id/activity - Record that the owner opened or dismissed a link.
+// Feeds the forgotten-links wheel, which is personal: only the owner's own
+// actions count, so a collaborator opening a shared link changes nothing.
+const ACTIVITY_FIELDS = { opened: "openedAt", dismissed: "dismissedAt" } as const;
+
+router.post("/:id/activity", authenticateToken, async (req: AuthRequest, res: Response): Promise<any> => {
+  try {
+    const action = req.body?.action as keyof typeof ACTIVITY_FIELDS;
+    const field = ACTIVITY_FIELDS[action];
+    if (!field) {
+      return res.status(400).json({ error: "Geçersiz işlem" });
+    }
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(404).json({ error: "Link bulunamadı" });
+    }
+
+    const link = await Link.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user?.id },
+      { $set: { [field]: new Date() } },
+      { new: true, projection: { openedAt: 1, dismissedAt: 1 } },
+    );
+    // Someone else's link reads as missing, like any link you cannot see.
+    if (!link) {
+      return res.status(404).json({ error: "Link bulunamadı" });
+    }
+
+    res.json({ _id: link._id, openedAt: link.openedAt, dismissedAt: link.dismissedAt });
+  } catch (error) {
+    console.error("Error recording link activity:", error);
+    res.status(500).json({ error: "İşlem kaydedilemedi" });
   }
 });
 
