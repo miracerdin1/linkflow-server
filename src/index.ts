@@ -12,9 +12,11 @@ import folderRoutes from "./routes/folders";
 import publicRoutes from "./routes/public";
 import authRoutes from "./routes/auth";
 import paymentsRoutes from "./routes/payments";
+import pushRoutes from "./routes/push";
 import Folder from "./models/Folder";
 import { getJwtSecret } from "./config/auth";
 import { AuthTokenPayload } from "./types/auth";
+import { startPushScheduler } from "./services/webPush";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -83,6 +85,7 @@ app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/links", linkRoutes);
 app.use("/api/folders", folderRoutes);
 app.use("/api/payments", paymentsRoutes);
+app.use("/api/push", pushRoutes);
 app.use("/", publicRoutes);
 
 io.use((socket, next) => {
@@ -171,4 +174,5 @@ mongoose.connection.on("disconnected", () => {
 httpServer.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   connectDB();
+  startPushScheduler();
 });

@@ -5,7 +5,8 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "vapid": "web-push generate-vapid-keys"
   },
   "keywords": [],
   "author": "",
@@ -25,7 +26,8 @@
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.7.2",
     "socket.io": "^4.8.3",
-    "stripe": "^22.1.1"
+    "stripe": "^22.1.1",
+    "web-push": "^3.6.7"
   },
   "overrides": {
     "path-to-regexp": "^8.4.0",
@@ -39,6 +41,7 @@
     "@types/express-rate-limit": "^5.1.3",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.0.6",
+    "@types/web-push": "^3.6.4",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
