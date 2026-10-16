@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 import Folder from "../models/Folder";
 import Link from "../models/Link";
 import Profile from "../models/Profile";
+import PushSubscription from "../models/PushSubscription";
+import Reminder from "../models/Reminder";
 import User from "../models/User";
 
 const getOwnedFolderIds = async (userId: string) => {
@@ -33,6 +35,8 @@ export const deleteAccountById = async (userId: string) => {
       { $pull: { collaborators: userId } },
     ),
     Profile.deleteOne({ owner: userId }),
+    PushSubscription.deleteMany({ owner: userId }),
+    Reminder.deleteMany({ owner: userId }),
   ]);
 
   await User.findByIdAndDelete(userId);
